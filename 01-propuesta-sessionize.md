@@ -109,7 +109,7 @@ Application Security / Security Engineering / DevSecOps · Investigación/técni
 
 ## ⚠️ ANTES DE ENVIAR — checklist
 
-- [ ] **Crítico**: replicar el laboratorio de aislamiento (las 4 posturas, los 8 vectores) en un clúster propio antes de presentar resultados como demo en vivo — los datos actuales vienen del estudio de referencia de Roy Belio (Red Hat), no de una ejecución propia. Si no se logra replicar a tiempo, decirlo explícitamente en la charla y en la propuesta ("metodología replicada de un estudio público, validación propia en curso").
+- [ ] **Crítico**: ejecutar el plan de replicación completo (ver README, sección "Plan de replicación de la demo"). Orden de prioridad: (1) clasificador de prompt injection + 8 vectores de escalada de privilegios — rápido, reproducible en `kind`/`minikube`; (2) las 4 posturas de aislamiento completas, incluyendo `kata` en OpenShift, aprovechando infraestructura Red Hat disponible. El ataque de los 3,000M de tokens se narra como caso de estudio citado, nunca como algo replicado. Si la falla de persistencia en el workspace no se logra reproducir con un runtime propio, presentarla citando el hallazgo del estudio de referencia, no como demo propia.
 - [ ] Redactar y adjuntar el documento técnico corto — es lo que más pesa en la aceptación según las reglas explícitas del CFP.
 - [ ] Preparar al menos un esqueleto de diapositivas para adjuntar, aunque no esté terminado.
 - [ ] Confirmar duración real del slot al momento de enviar (el esqueleto de arriba asume ~45 min; ajustar si el formato de Black Alpaca es más corto).

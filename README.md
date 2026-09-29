@@ -51,14 +51,24 @@ Un ataque real del 4 de mayo de 2026 movió 3,000 millones de tokens con un twee
 
 - `index.html` y `assets/`: presentación (pendiente).
 - `GUION.md`: notas y reparto de tiempo (pendiente).
-- `demo/`: manifiestos de las 4 posturas de aislamiento, scripts de los 8 vectores de ataque, comandos de demo (pendiente) — **crítico probarlos en un clúster real propio antes del evento**, no asumir que los resultados del estudio de referencia se replican igual en mi entorno.
+- `demo/`: manifiestos de las 4 posturas de aislamiento, scripts de los 8 vectores de ataque, comandos de demo (pendiente).
 - Documento técnico adjunto (exigido/preferido por el CFP): pendiente de redactar, basado en este README.
+
+## Plan de replicación de la demo (decisión: ir por las 4 posturas completas, incluyendo Kata/OpenShift)
+
+Evaluación honesta de qué tan reproducible es cada parte antes de comprometerse a demo en vivo:
+
+- **Fácil, reproducible por mi cuenta en poco tiempo**: el clasificador de prompt injection fallando con el mismo texto codificado en Morse y distinto verbo (`protectai/deberta-v3-base-prompt-injection-v2` es público en HuggingFace) — reproducible en cualquier laptop. Los 8 vectores de escalada de privilegios (`sudo`, `su`, `setuid`, `nsenter`, `mount`, `chroot`, binario setuid, `/proc/1/root`) contra un pod con las mismas restricciones (uid 1000, sin capabilities) — reproducible en `kind`/`minikube` o cualquier clúster propio.
+- **Requiere más esfuerzo, decidido a hacerlo**: las 4 posturas completas. `bare` y `bare-np` son directas en cualquier clúster; `ssh`/sandbox necesita armar el patrón de dos pods (gateway + sandbox); **`kata` específicamente requiere OpenShift con soporte de Kata Containers** — aprovechar el acceso a infraestructura Red Hat/OpenShift disponible por mi rol para levantar esta postura real, no simulada.
+- **No reproducible ni se debe intentar**: el ataque real de los 3,000 millones de tokens (incidente contra bots de producción de terceros — se usa como caso de estudio narrado con fuente citada, nunca como algo a replicar). La falla de persistencia en el workspace del agente requiere el mismo runtime específico (`openclaw`) del estudio original — evaluar si se puede armar un análogo simplificado propio o si se presenta citando el hallazgo del estudio de referencia sin reclamarlo como demo propia.
+
+**Crítico antes de presentar cualquier resultado como demo en vivo**: ejecutar el laboratorio completo en infraestructura propia y registrar los resultados reales — no asumir que los números del estudio de referencia se replican igual en mi entorno. Si algún resultado difiere, se presenta el resultado propio, no el ajeno.
 
 ## Estado
 
 Carpeta creada como punto de partida, reencuadrando en clave ofensiva el contenido ya verificado del estudio de Roy Belio (Red Hat) para el bloque "¿Fue protegido?" de las propuestas hermanas de X-Ops Madrid y Cloud Native AI Summit Paris — mismo material técnico, ángulo distinto (red team vs. gobernanza de plataforma).
 
-Falta: **replicar el laboratorio de aislamiento en un clúster propio** antes de presentar los resultados como demo en vivo (los datos actuales son del estudio de referencia, no de una ejecución propia — esto hay que dejarlo claro en la charla si no se logra replicar a tiempo); escribir el documento técnico que el CFP prefiere adjunto; escribir guión y diapositivas; confirmar duración real del slot al enviar.
+Falta: **ejecutar el plan de replicación completo** (ver sección arriba) — priorizar primero clasificador + escalada de privilegios (rápido), luego las 4 posturas con Kata/OpenShift (más tiempo); escribir el documento técnico que el CFP prefiere adjunto; escribir guión y diapositivas; confirmar duración real del slot al enviar.
 
 ## Fuentes consultadas
 
