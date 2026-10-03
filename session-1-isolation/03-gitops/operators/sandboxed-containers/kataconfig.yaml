@@ -1,0 +1,22 @@
+# KataConfig habilita el runtime Kata Containers en el cluster y crea el
+# RuntimeClass "kata" que consume la postura kata (runtimeClassName: kata).
+#
+# !!! ADVERTENCIA OPERATIVA REAL !!!
+# Aplicar este KataConfig DESENCADENA UN REINICIO SECUENCIAL DE LOS NODOS
+# WORKER afectados: el Machine Config Operator instala el runtime kata en cada
+# nodo y lo reinicia uno por uno (rolling reboot). En un cluster de produccion
+# esto drena y reinicia nodos — planificarlo en ventana de mantenimiento.
+# La instalacion completa puede tardar varios minutos a decenas de minutos
+# segun el numero de nodos.
+apiVersion: kataconfiguration.openshift.io/v1
+kind: KataConfig
+metadata:
+  name: cluster-kataconfig
+spec:
+  # Sin kataConfigPoolSelector se habilita kata en TODOS los nodos worker.
+  # Para limitar el radio (recomendado en un lab), descomentar y etiquetar
+  # solo los nodos destinados a kata con: oc label node <node> kata=enabled
+  #
+  # kataConfigPoolSelector:
+  #   matchLabels:
+  #     kata: "enabled"

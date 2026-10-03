@@ -1,0 +1,64 @@
+# AppProject de Argo CD — PROPUESTA 1: aislamiento de agentes de IA (Black Alpaca 2026).
+# Agrupa y acota lo que sus Applications pueden desplegar: de qué repo leen
+# (sourceRepos), a qué namespaces/cluster escriben (destinations) y qué recursos
+# de cluster pueden crear (clusterResourceWhitelist).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: black-alpaca-isolation
+  # El proyecto DEBE vivir en el namespace donde corre Argo CD (OpenShift GitOps).
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: black-alpaca-2026
+    black-alpaca.session: "1-isolation"
+  # El finalizer asegura que, al borrar el proyecto, Argo CD limpie primero
+  # las Application asociadas en cascada.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: >-
+    Laboratorio de red-teaming de agentes de IA en Kubernetes (Black Alpaca 2026).
+    Despliega las 4 posturas de aislamiento (bare, bare-np, ssh, kata) y el
+    operator de Sandboxed Containers para la postura kata.
+
+  # Repos permitidos como fuente. AJUSTAR al publicar el repo en GitHub.
+  sourceRepos:
+    - https://github.com/jeanpaul-lopez/black-alpaca-redteam-agentes-k8s.git
+
+  # Destinos permitidos: solo el cluster local (in-cluster) y, de forma amplia,
+  # cualquier namespace. Se restringe por nombre de servidor, no por namespace,
+  # porque el ApplicationSet crea namespaces openclaw-* dinamicamente con
+  # CreateNamespace=true y queremos permitir todos los del lab sin enumerarlos.
+  destinations:
+    # Todos los namespaces del lab siguen el prefijo openclaw-* (patron
+    # gateway/sandbox/vault por postura, ver ../../../shared/lab-conventions.md). Se usa comodin
+    # para cubrir tambien los openclaw-<postura>-vault de la frontera 3 sin
+    # enumerar uno por uno y sin que el ApplicationSet rompa al anadir posturas.
+    - server: https://kubernetes.default.svc
+      namespace: 'openclaw-*'
+    # Namespace del operator de Sandboxed Containers (postura kata).
+    - server: https://kubernetes.default.svc
+      namespace: openshift-sandboxed-containers-operator
+
+  # Recursos de AMBITO DE CLUSTER (no namespaced) que las Application pueden
+  # crear. Sin esta whitelist, Argo CD rechaza crear Namespaces, KataConfig, etc.
+  clusterResourceWhitelist:
+    # Namespaces: los crea CreateNamespace=true y la Application del operator.
+    - group: ""
+      kind: Namespace
+    # KataConfig instala el runtime kata a nivel de cluster (afecta nodos worker).
+    - group: kataconfiguration.openshift.io
+      kind: KataConfig
+    # RuntimeClass "kata" que consume la postura kata via runtimeClassName.
+    - group: node.k8s.io
+      kind: RuntimeClass
+    # El operator OLM puede desplegar objetos de cluster (CRDs, etc.).
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+
+  # Recursos NAMESPACED permitidos: "*" para no bloquear nada dentro de los
+  # namespaces ya acotados por destinations (Deployments, Pods, Secrets,
+  # NetworkPolicy, ServiceAccount, Subscription, OperatorGroup, etc.).
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

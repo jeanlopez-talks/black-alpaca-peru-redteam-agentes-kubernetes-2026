@@ -1,0 +1,6 @@
+# Namespace donde OLM instala el OpenShift Sandboxed Containers Operator.
+# El nombre es el que espera el operator por convencion de Red Hat.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-sandboxed-containers-operator

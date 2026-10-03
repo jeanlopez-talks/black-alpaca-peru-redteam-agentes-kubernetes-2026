@@ -1,0 +1,69 @@
+# Postura `bare` — SANDBOX (ejecución de herramientas, uid 1000, SIN credenciales).
+# Es el pod desde el que se lanzan los probes de las 6 fronteras y los 8 vectores
+# de escalada de privilegios. SecurityContext IDÉNTICO en las 4 posturas (ver
+# ../../../../shared/lab-conventions.md): caps dropped, runAsNonRoot, seccomp RuntimeDefault y
+# automountServiceAccountToken:false.
+# En `bare` el sandbox comparte namespace con el gateway y NO hay NetworkPolicy,
+# por lo que las fronteras de red y de credenciales se espera que FALLEN.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sandbox
+  namespace: openclaw-bare
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    app.kubernetes.io/component: sandbox
+    redteam.posture: bare
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox
+  namespace: openclaw-bare
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    app.kubernetes.io/component: sandbox
+    redteam.posture: bare
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: sandbox
+      redteam.posture: bare
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: redteam-agents
+        app.kubernetes.io/component: sandbox
+        redteam.posture: bare
+    spec:
+      serviceAccountName: sandbox
+      # FRONTERA 2 (k8s-api): el sandbox NO debe poder hablar con el API server.
+      # No montar el token del ServiceAccount quita la credencial del propio pod.
+      automountServiceAccountToken: false
+      containers:
+        - name: sandbox
+          image: registry.access.redhat.com/ubi9/ubi-minimal
+          command: ["sleep", "infinity"]
+          # SecurityContext EXACTO del contrato (../../../../shared/lab-conventions.md).
+          securityContext:
+            runAsNonRoot: true
+            # En OpenShift NO se fija runAsUser/runAsGroup: la SCC restricted-v2
+            # asigna el UID del rango del namespace (fijar 1000 da PodAdmissionFailed).
+            # El aislamiento lo dan runAsNonRoot + caps drop ALL + noPrivEsc.
+            allowPrivilegeEscalation: false
+            # readOnlyRootFilesystem:false — el workspace necesita escritura
+            # (ver FRONTERA 6, workspace-persistence: falla en las 4 posturas).
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            # Workspace escribible: habilita el probe de persistencia (ASI06).
+            - name: workspace
+              mountPath: /workspace
+      volumes:
+        - name: workspace
+          emptyDir: {}

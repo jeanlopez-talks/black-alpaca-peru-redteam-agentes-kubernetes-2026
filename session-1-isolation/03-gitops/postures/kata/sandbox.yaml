@@ -1,0 +1,66 @@
+# Postura `kata` — SANDBOX en microVM (openclaw-kata-sandbox).
+# runtimeClassName: kata => el pod corre con kernel de invitado propio sobre el
+# hypervisor (OpenShift Sandboxed Containers), añadiendo una frontera por encima
+# de namespaces + NetworkPolicy. SecurityContext IDÉNTICO al contrato.
+# FRONTERA 4 (8 vectores de escalada): bloqueados por kernel; además, un escape
+# del contenedor quedaría contenido dentro de la microVM, no en el nodo.
+# Hallazgo honesto: FRONTERA 5 (tool-write-mediation) y FRONTERA 6
+# (workspace-persistence) siguen FALLANDO incluso aquí.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sandbox
+  namespace: openclaw-kata-sandbox
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    app.kubernetes.io/component: sandbox
+    redteam.posture: kata
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox
+  namespace: openclaw-kata-sandbox
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    app.kubernetes.io/component: sandbox
+    redteam.posture: kata
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: sandbox
+      redteam.posture: kata
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: redteam-agents
+        app.kubernetes.io/component: sandbox
+        redteam.posture: kata
+    spec:
+      serviceAccountName: sandbox
+      automountServiceAccountToken: false
+      # Frontera de hypervisor: microVM con kernel de invitado propio.
+      runtimeClassName: kata
+      containers:
+        - name: sandbox
+          image: registry.access.redhat.com/ubi9/ubi-minimal
+          command: ["sleep", "infinity"]
+          securityContext:
+            runAsNonRoot: true
+            # En OpenShift NO se fija runAsUser/runAsGroup: la SCC restricted-v2
+            # asigna el UID del rango del namespace (fijar 1000 da PodAdmissionFailed).
+            # El aislamiento lo dan runAsNonRoot + caps drop ALL + noPrivEsc.
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      volumes:
+        - name: workspace
+          emptyDir: {}

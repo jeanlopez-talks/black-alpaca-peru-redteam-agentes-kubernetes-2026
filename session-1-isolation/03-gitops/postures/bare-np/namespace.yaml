@@ -1,0 +1,10 @@
+# Postura `bare-np` — igual que `bare` (todo en un namespace) pero la
+# NetworkPolicy es la ÚNICA frontera añadida. Sirve para aislar el efecto
+# de la NetworkPolicy respecto de la línea base `bare`.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-bare-np
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.posture: bare-np

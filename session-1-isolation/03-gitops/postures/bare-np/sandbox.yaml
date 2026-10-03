@@ -1,0 +1,62 @@
+# Postura `bare-np` — SANDBOX (uid 1000, sin credenciales).
+# SecurityContext IDÉNTICO al contrato. Comparte namespace con el gateway.
+# La diferencia con `bare` es exclusivamente la NetworkPolicy (ver networkpolicy.yaml):
+# aquí se espera que la FRONTERA 2 (k8s-api, vía egress) y el egress externo se
+# vean afectados por el deny-by-default, mientras las fronteras intra-namespace
+# (gateway-creds) sigan fallando.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sandbox
+  namespace: openclaw-bare-np
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    app.kubernetes.io/component: sandbox
+    redteam.posture: bare-np
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox
+  namespace: openclaw-bare-np
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    app.kubernetes.io/component: sandbox
+    redteam.posture: bare-np
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: sandbox
+      redteam.posture: bare-np
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: redteam-agents
+        app.kubernetes.io/component: sandbox
+        redteam.posture: bare-np
+    spec:
+      serviceAccountName: sandbox
+      automountServiceAccountToken: false
+      containers:
+        - name: sandbox
+          image: registry.access.redhat.com/ubi9/ubi-minimal
+          command: ["sleep", "infinity"]
+          securityContext:
+            runAsNonRoot: true
+            # En OpenShift NO se fija runAsUser/runAsGroup: la SCC restricted-v2
+            # asigna el UID del rango del namespace (fijar 1000 da PodAdmissionFailed).
+            # El aislamiento lo dan runAsNonRoot + caps drop ALL + noPrivEsc.
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      volumes:
+        - name: workspace
+          emptyDir: {}

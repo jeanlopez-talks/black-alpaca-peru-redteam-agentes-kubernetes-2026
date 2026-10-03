@@ -1,0 +1,24 @@
+# Postura `ssh` — DOS namespaces separados: gateway y sandbox viven aparte,
+# con SSH como único punto de ingreso del gateway hacia el sandbox.
+# Esta separación de namespaces es en sí misma una frontera adicional respecto
+# de `bare`/`bare-np` (donde todo convive). Se espera que las fronteras de
+# credenciales y cross-compartment mejoren, pero el hallazgo honesto del estudio
+# es que la FRONTERA 5 (tool-write-mediation) FALLA en `ssh`.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-ssh-gateway
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    app.kubernetes.io/component: gateway
+    redteam.posture: ssh
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-ssh-sandbox
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    app.kubernetes.io/component: sandbox
+    redteam.posture: ssh

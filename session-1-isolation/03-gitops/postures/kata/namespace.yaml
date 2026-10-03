@@ -1,0 +1,24 @@
+# Postura `kata` — DOS namespaces separados (gateway + sandbox), igual que `ssh`,
+# pero el sandbox corre en una microVM con kernel de invitado propio vía
+# `runtimeClassName: kata` (OpenShift Sandboxed Containers). Es la postura de
+# aislamiento MÁS fuerte: añade una frontera de hypervisor sobre todo lo demás.
+# Aun así, el estudio reporta que FRONTERA 5 (tool-write-mediation) y FRONTERA 6
+# (workspace-persistence) siguen fallando: ningún control de este stack las mitiga.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-kata-gateway
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    app.kubernetes.io/component: gateway
+    redteam.posture: kata
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-kata-sandbox
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    app.kubernetes.io/component: sandbox
+    redteam.posture: kata

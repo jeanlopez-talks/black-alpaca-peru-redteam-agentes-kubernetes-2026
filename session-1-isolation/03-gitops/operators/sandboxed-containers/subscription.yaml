@@ -1,0 +1,17 @@
+# Subscription OLM que instala y mantiene actualizado el operator.
+# source: redhat-operators (catalogo oficial de Red Hat en OpenShift).
+# channel: "stable" es el canal estable del operator de Sandboxed Containers.
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: sandboxed-containers-operator
+  namespace: openshift-sandboxed-containers-operator
+spec:
+  # Nombre del paquete en el catalogo redhat-operators.
+  name: sandboxed-containers-operator
+  channel: stable
+  source: redhat-operators
+  # CatalogSource de los operators de Red Hat vive en openshift-marketplace.
+  sourceNamespace: openshift-marketplace
+  # Automatic: OLM aprueba las actualizaciones del canal sin intervencion.
+  installPlanApproval: Automatic

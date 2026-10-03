@@ -1,0 +1,14 @@
+# Postura `bare-np` — línea base + NetworkPolicy como única frontera.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+commonLabels:
+  app.kubernetes.io/part-of: redteam-agents
+  redteam.posture: bare-np
+
+resources:
+  - namespace.yaml
+  - gateway.yaml
+  - sandbox.yaml
+  - networkpolicy.yaml
+  - secret-crosscompartment.yaml

@@ -1,0 +1,15 @@
+# Kustomize que agrupa los manifiestos del operator de Sandboxed Containers.
+# Lo consume la Application application-sandboxed-containers.yaml (sync-wave -1).
+#
+# Orden de recursos (Argo CD/Kustomize los aplica, OLM resuelve dependencias):
+#   1. namespace       -> namespace del operator
+#   2. operatorgroup   -> requisito OLM para instalar en el namespace
+#   3. subscription    -> instala el operator desde redhat-operators
+#   4. kataconfig      -> habilita el runtime kata (REINICIA NODOS WORKER)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - operatorgroup.yaml
+  - subscription.yaml
+  - kataconfig.yaml

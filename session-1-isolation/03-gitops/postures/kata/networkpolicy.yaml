@@ -1,0 +1,106 @@
+# Postura `kata` — NetworkPolicy: egress deny-by-default salvo DNS, en AMBOS
+# namespaces (gateway y sandbox), igual que `ssh`. La frontera de red se suma a
+# la de namespace y a la de hypervisor (microVM Kata). SSH sigue siendo el único
+# ingreso permitido al sandbox. DNS (UDP/TCP 53) queda abierto.
+#
+# --- Namespace del gateway ---
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: openclaw-kata-gateway
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.posture: kata
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: openclaw-kata-gateway
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.posture: kata
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # El gateway alcanza el SSH del sandbox (único canal permitido).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              redteam.posture: kata
+              app.kubernetes.io/component: sandbox
+      ports:
+        - protocol: TCP
+          port: 22
+#
+# --- Namespace del sandbox ---
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: openclaw-kata-sandbox
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.posture: kata
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: openclaw-kata-sandbox
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.posture: kata
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Ingreso al sandbox: SOLO SSH (TCP 22) y SOLO desde el namespace del gateway.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ssh-ingress-from-gateway
+  namespace: openclaw-kata-sandbox
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.posture: kata
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              redteam.posture: kata
+              app.kubernetes.io/component: gateway
+      ports:
+        - protocol: TCP
+          port: 22

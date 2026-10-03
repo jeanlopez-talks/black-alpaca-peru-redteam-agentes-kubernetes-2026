@@ -1,0 +1,73 @@
+# ApplicationSet que genera una Application por cada postura de aislamiento.
+# Usa un generador "list" con las 4 posturas; cada entrada define su nombre,
+# la ruta Kustomize bajo ../postures/<postura> y su sync-wave.
+#
+# Orden de sync-waves del laboratorio completo:
+#   -1  -> Application del operator Sandboxed Containers (application-sandboxed-containers.yaml)
+#    0  -> posturas bare, bare-np, ssh (no dependen de ningun operator)
+#    1  -> postura kata (depende de que el RuntimeClass "kata" ya exista)
+#
+# La sync-wave se inyecta como annotation en CADA Application generada via
+# template.metadata.annotations, de modo que Argo CD aplique kata despues del
+# operator y del resto de posturas.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: isolation-postures
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: black-alpaca-2026
+    black-alpaca.session: "1-isolation"
+spec:
+  # goTemplate permite usar sintaxis {{.posture}} y helpers de Go templates.
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          # Postura base: todo en un pod, sin NetworkPolicy. Sin dependencias.
+          - posture: bare
+            syncWave: "0"
+          # NetworkPolicy deny-egress como unica frontera. Sin dependencias.
+          - posture: bare-np
+            syncWave: "0"
+          # Dos pods (gateway + sandbox), SSH como unico ingreso. Sin dependencias.
+          - posture: ssh
+            syncWave: "0"
+          # microVM con runtimeClassName: kata. DEPENDE del operator (wave 1 > -1).
+          - posture: kata
+            syncWave: "1"
+  template:
+    metadata:
+      name: "isolation-{{.posture}}"
+      labels:
+        app.kubernetes.io/part-of: black-alpaca-2026
+        black-alpaca.session: "1-isolation"
+      # sync-wave por postura: kata (1) se aplica despues del operator (-1)
+      # y despues de las demas posturas (0).
+      annotations:
+        argocd.argoproj.io/sync-wave: "{{.syncWave}}"
+    spec:
+      project: black-alpaca-isolation
+      source:
+        # AJUSTAR la URL al publicar el repo en GitHub.
+        repoURL: https://github.com/jeanpaul-lopez/black-alpaca-redteam-agentes-k8s.git
+        targetRevision: main
+        # Cada postura es un overlay Kustomize bajo ../postures/<postura>.
+        path: "session-1-isolation/03-gitops/postures/{{.posture}}"
+      destination:
+        # Cluster local donde corre Argo CD (OpenShift GitOps).
+        server: https://kubernetes.default.svc
+        # El namespace destino lo define el propio Kustomize de la postura;
+        # no se fija aqui porque cada postura usa namespaces openclaw-* distintos.
+      syncPolicy:
+        automated:
+          # prune: borra recursos que ya no estan en Git (lab reproducible).
+          prune: true
+          # selfHeal: revierte cambios manuales en el cluster hacia el estado de Git.
+          selfHeal: true
+        syncOptions:
+          # Crea el/los namespace(s) openclaw-* de la postura si no existen.
+          - CreateNamespace=true
+          # Aplica recursos en orden aunque alguno falle temporalmente.
+          - ApplyOutOfSyncOnly=true

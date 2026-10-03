@@ -1,0 +1,12 @@
+# OperatorGroup requerido por OLM para instalar el operator en su namespace.
+# targetNamespaces vacio (lista con el propio namespace) = instalacion
+# "OwnNamespace"; el operator de Sandboxed Containers opera a nivel de cluster
+# pero su suscripcion se ancla en este namespace.
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: sandboxed-containers-operator-group
+  namespace: openshift-sandboxed-containers-operator
+spec:
+  targetNamespaces:
+    - openshift-sandboxed-containers-operator

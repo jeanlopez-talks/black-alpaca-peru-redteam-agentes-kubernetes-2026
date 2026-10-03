@@ -1,0 +1,12 @@
+# Postura `bare` — línea base SIN aislamiento.
+# Gateway y sandbox conviven en UN SOLO namespace, sin NetworkPolicy.
+# Es el "radio de explosión" máximo: sirve de referencia contra la cual
+# se miden las otras tres posturas. Aquí se espera que varias fronteras
+# FALLEN (escape), porque no hay ninguna frontera de red ni de namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-bare
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.posture: bare

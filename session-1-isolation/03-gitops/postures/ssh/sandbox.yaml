@@ -1,0 +1,64 @@
+# Postura `ssh` — SANDBOX en su PROPIO namespace (openclaw-ssh-sandbox).
+# Pod separado del gateway; el gateway entra únicamente por SSH. SecurityContext
+# IDÉNTICO al contrato (uid 1000, caps dropped, seccomp RuntimeDefault,
+# automountServiceAccountToken:false). Desde aquí se lanzan los 8 vectores de
+# escalada (FRONTERA 4): todos deben quedar bloqueados por el kernel.
+# NOTA honesta del estudio: aunque el sandbox está separado, la FRONTERA 5
+# (tool-write-mediation) FALLA — el harness reporta "rechazado" pero `bash`
+# escribe el archivo igual en este mismo contenedor.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sandbox
+  namespace: openclaw-ssh-sandbox
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    app.kubernetes.io/component: sandbox
+    redteam.posture: ssh
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox
+  namespace: openclaw-ssh-sandbox
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    app.kubernetes.io/component: sandbox
+    redteam.posture: ssh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: sandbox
+      redteam.posture: ssh
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: redteam-agents
+        app.kubernetes.io/component: sandbox
+        redteam.posture: ssh
+    spec:
+      serviceAccountName: sandbox
+      automountServiceAccountToken: false
+      containers:
+        - name: sandbox
+          image: registry.access.redhat.com/ubi9/ubi-minimal
+          command: ["sleep", "infinity"]
+          securityContext:
+            runAsNonRoot: true
+            # En OpenShift NO se fija runAsUser/runAsGroup: la SCC restricted-v2
+            # asigna el UID del rango del namespace (fijar 1000 da PodAdmissionFailed).
+            # El aislamiento lo dan runAsNonRoot + caps drop ALL + noPrivEsc.
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      volumes:
+        - name: workspace
+          emptyDir: {}
