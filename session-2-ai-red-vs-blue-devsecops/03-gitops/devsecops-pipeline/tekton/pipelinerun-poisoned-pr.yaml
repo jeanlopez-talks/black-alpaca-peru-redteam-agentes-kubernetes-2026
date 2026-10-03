@@ -1,10 +1,6 @@
-# PipelineRun que dispara el FLUJO DevSecOps COMPLETO (4 etapas) contra el PR
-# ENVENENADO (Acto 2/3). Cambia pr-diff a pr-01-obvious.diff para el Acto 1
-# (el azul bloquea y la etapa deploy-gitops NO corre).
-#
-# Kubernetes VANILLA (k3s): el workspace usa la StorageClass default `local-path`
-# (rancher.io/local-path, WaitForFirstConsumer). No se fija storageClassName a
-# proposito: toma la default del cluster.
+# PipelineRun del flujo DevSecOps completo (8 etapas) contra el PR ENVENENADO
+# (Acto 2/3). Cambia pr-diff a pr-01-obvious.diff para el Acto 1 (el azul bloquea
+# y deploy-gitops NO corre).
 #
 # name fijo + sync-options Replace=true: los PipelineRun son inmutables, asi que
 # Argo CD lo reemplaza (borra+crea) en cada sync para re-ejecutar el duelo.
@@ -15,9 +11,6 @@ kind: PipelineRun
 metadata:
   name: duel-devsecops-poisoned
   namespace: openclaw-duel
-  labels:
-    app.kubernetes.io/part-of: redteam-agents
-    redteam.component: duel
   annotations:
     argocd.argoproj.io/sync-options: Force=true,Replace=true
 spec:

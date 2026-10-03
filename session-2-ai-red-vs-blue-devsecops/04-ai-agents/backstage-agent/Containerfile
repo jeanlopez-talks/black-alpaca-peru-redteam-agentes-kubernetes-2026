@@ -10,7 +10,7 @@
 #
 # Este Containerfile cubre el camino (2). El (1) es el que llevan los manifiestos
 # por defecto para que sea aplicable de una.
-FROM registry.access.redhat.com/ubi9/python-311
+FROM registry.access.redhat.com/ubi9/python-311:9.8
 
 WORKDIR /app
 

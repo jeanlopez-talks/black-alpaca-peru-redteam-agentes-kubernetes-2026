@@ -10,7 +10,7 @@ metadata:
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: black-alpaca-2026
-    black-alpaca.session: "1-isolation"
+    black-alpaca.session: ai-agent-isolation
   # El finalizer asegura que, al borrar el proyecto, Argo CD limpie primero
   # las Application asociadas en cascada.
   finalizers:

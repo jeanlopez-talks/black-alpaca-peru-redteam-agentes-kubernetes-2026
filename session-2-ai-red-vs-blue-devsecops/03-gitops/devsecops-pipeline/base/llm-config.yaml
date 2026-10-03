@@ -27,9 +27,6 @@ kind: Secret
 metadata:
   name: duel-llm-secret
   namespace: openclaw-duel
-  labels:
-    app.kubernetes.io/part-of: redteam-agents
-    redteam.component: duel
 type: Opaque
 stringData:
   # LLM local vLLM: la key es DUMMY (vLLM no la valida). No es un secreto real.
@@ -42,11 +39,8 @@ kind: ConfigMap
 metadata:
   name: duel-llm-config
   namespace: openclaw-duel
-  labels:
-    app.kubernetes.io/part-of: redteam-agents
-    redteam.component: duel
 data:
-  # openai-compatible -> ChatOpenAI con base_url custom (ver ../../04-ai-agents/red-blue-agents/llm_factory.py).
+  # openai-compatible -> ChatOpenAI con base_url custom (ver ../../../04-ai-agents/red-blue-agents/llm_factory.py).
   LLM_PROVIDER: "openai-compatible"
   LLM_MODEL: "qwen3-8b"                 # served-model-name del vLLM
   OPENAI_BASE_URL: "http://vllm.inference.svc.cluster.local:8000/v1"

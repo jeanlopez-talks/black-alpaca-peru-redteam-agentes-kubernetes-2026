@@ -8,13 +8,13 @@ GitOps de la propuesta 2. Argo CD vive en el namespace `argocd` (k3s vanilla).
 |---------|---------|---------------|
 | `appproject-ai-red-vs-blue-devsecops.yaml` | AppProject `ai-red-vs-blue-devsecops` | acota repos/namespaces/recursos de esta propuesta |
 | `application-devsecops-pipeline.yaml` | Application `ai-red-vs-blue-devsecops-pipeline` | pipeline Tekton de 8 etapas + supply chain + sample-app |
-| `application-kyverno-policies.yaml` | Application `ai-red-vs-blue-devsecops-kyverno-policies` | las ClusterPolicy de admission (sync-wave -1) |
+| `application-admission-policies.yaml` | Application `ai-red-vs-blue-devsecops-admission-policies` | las ClusterPolicy de admission (sync-wave -1) |
 | `application-backstage.yaml` | Application `ai-red-vs-blue-devsecops-backstage` | config de Backstage de la charla + agente interactivo |
 
 ## Orden (sync-waves)
 
 ```
--1  ai-red-vs-blue-devsecops-kyverno-policies   (las policies deben existir antes del deploy)
+-1  ai-red-vs-blue-devsecops-admission-policies   (las policies deben existir antes del deploy)
  0  ai-red-vs-blue-devsecops-pipeline, ai-red-vs-blue-devsecops-backstage
 ```
 
@@ -32,7 +32,7 @@ Ver `../../../shared/gitops-architecture.md` para la separación plataforma (hom
 
 ```bash
 kubectl apply -f appproject-ai-red-vs-blue-devsecops.yaml
-kubectl apply -f application-kyverno-policies.yaml
+kubectl apply -f application-admission-policies.yaml
 kubectl apply -f application-devsecops-pipeline.yaml
 kubectl apply -f application-backstage.yaml
 ```
@@ -43,4 +43,4 @@ kubectl apply -f application-backstage.yaml
 
 - AppProject: `ai-red-vs-blue-devsecops`
 - Applications: `duel-<component>` (kebab-case, inglés)
-- Labels estándar: `app.kubernetes.io/part-of: black-alpaca-2026`, `black-alpaca.session: "2-duel"`
+- Labels estándar: `app.kubernetes.io/part-of: black-alpaca-2026`, `black-alpaca.session: ai-red-vs-blue-devsecops`

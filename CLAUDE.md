@@ -42,7 +42,7 @@ session-1-ai-agent-isolation/      PROPUESTA 1 — agente como víctima (aislami
 session-2-ai-red-vs-blue-devsecops/           PROPUESTA 2 — duelo rojo vs azul en pipeline DevSecOps
   01-proposal/            sessionize-proposal.md, concept.md (diseño en 4 actos)
   02-slides/              index.html
-  03-gitops/              argocd/, devsecops-pipeline/ (Tekton 8 etapas + kyverno/), backstage/
+  03-gitops/              argocd/, devsecops-pipeline/ (base, tekton, sample-app, fixtures), admission-policies/, backstage/
   04-ai-agents/           red-blue-agents/ (agentes A2A + cluster-evidence/), backstage-agent/
 shared/                   classifier/ (ambas), lab-conventions.md, gitops-architecture.md,
                           event-research-2025.md, slides-index.html (portada de ambas)

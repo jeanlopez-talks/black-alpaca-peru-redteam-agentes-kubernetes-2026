@@ -7,7 +7,7 @@
 # firma es VALIDA y NO detecta el ataque. La supply chain de la imagen esta intacta;
 # el ataque va por otro canal (prompt injection en el config que revisa el agente).
 # => La firma es NECESARIA pero NO SUFICIENTE. Lo que atrapa el ataque es la otra
-#    policy (policy-require-human-approval.yaml), no esta.
+#    policy (clusterpolicy-require-human-approval.yaml), no esta.
 #
 # Enforce: la imagen propia vive en el registry interno Zot y el pipeline la firma
 # por digest (etapa sign). Kyverno verifica esa firma en admision con la clave
@@ -16,9 +16,6 @@ apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
   name: duel-verify-images
-  labels:
-    app.kubernetes.io/part-of: redteam-agents
-    redteam.component: duel
   annotations:
     policies.kyverno.io/title: Verificar firma cosign de imagenes
     policies.kyverno.io/category: Supply Chain / Image Signing
@@ -56,7 +53,7 @@ spec:
           # registry inseguro NO se configura por policy (no existe
           # allowInsecureRegistry en verifyImages), sino a NIVEL GLOBAL del
           # admission-controller con el flag --allowInsecureRegistry=true. Ver
-          # README.md de kyverno/ para el patch del deployment de Kyverno.
+          # README.md de esta carpeta, "Requisitos de plataforma".
           attestors:
             - count: 1
               entries:

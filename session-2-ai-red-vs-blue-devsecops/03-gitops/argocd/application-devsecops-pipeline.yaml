@@ -9,7 +9,7 @@ metadata:
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: black-alpaca-2026
-    black-alpaca.session: "2-duel"
+    black-alpaca.session: ai-red-vs-blue-devsecops
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

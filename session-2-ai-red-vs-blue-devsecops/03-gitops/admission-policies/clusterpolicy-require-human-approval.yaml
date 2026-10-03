@@ -9,7 +9,7 @@
 #   - el agente (duel-runner) NO puede poner esta anotacion: su ServiceAccount no
 #     tiene token de API (automountServiceAccountToken:false) ni RoleBinding, asi
 #     que no puede mutar manifiestos ni hablar con el API server (ver
-#     serviceaccount.yaml). Solo un HUMANO (o una SA con permisos explicitos) la
+#     ../devsecops-pipeline/base/serviceaccount-duel-runner.yaml). Solo un HUMANO (o una SA con permisos explicitos) la
 #     añade al manifiesto del repo tras una revision real.
 #   - Argo CD aplica el Deployment del repo; si no lleva la anotacion, el webhook
 #     de Kyverno lo rechaza ANTES de que se cree el pod.
@@ -20,9 +20,6 @@ apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
   name: duel-require-human-approval
-  labels:
-    app.kubernetes.io/part-of: redteam-agents
-    redteam.component: duel
   annotations:
     policies.kyverno.io/title: Exigir aprobacion humana en openclaw-duel
     policies.kyverno.io/category: Supply Chain / Admission Control

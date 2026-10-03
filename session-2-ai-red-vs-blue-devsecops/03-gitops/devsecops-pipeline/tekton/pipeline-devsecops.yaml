@@ -1,6 +1,6 @@
 # Pipeline Tekton del duelo — FLUJO DevSecOps COMPLETO con SUPPLY CHAIN + ADMISSION.
 # VERSION KUBERNETES VANILLA (k3s v1.36). Tekton Pipelines y Argo CD (ns `argocd`)
-# YA estan instalados. Kyverno se instala aparte (ver kyverno/).
+# YA estan instalados. Kyverno lo gestiona la plataforma; sus policies en ../../admission-policies/.
 #
 # ======================================================================
 # ORDEN DevSecOps (encadenado con runAfter + when):
@@ -52,7 +52,7 @@
 #      por aprobacion-humana es la capa que si frena.
 #
 # ======================================================================
-# QUE ES REAL vs SIMULADO (resumen; detalle en README.md):
+# QUE ES REAL vs SIMULADO (resumen; detalle en ../README.md):
 #   - supply chain REAL contra el REGISTRY INTERNO Zot (zot.registry.svc:5000):
 #     build EMPUJA la imagen; cosign FIRMA y VERIFICA por digest (la firma vive en
 #     el registry como artefacto OCI); Trivy ESCANEA la imagen del registry.
@@ -63,7 +63,7 @@
 #   - deploy-gitops: manifiesto REAL; el kubectl apply lo hace el operador/SA.
 #   - Admission (Kyverno): REAL en admision. Ahora verifyImages esta en ENFORCE
 #     (hay registry con imagenes firmadas que verificar), pero NO es la capa que
-#     frena este ataque (ver DEFENSA EN CAPAS). Ver kyverno/.
+#     frena este ataque (ver DEFENSA EN CAPAS). Ver ../../admission-policies/.
 #
 # POR QUE herramientas como imagenes en steps (no operators): en k3s vanilla
 # instalamos lo minimo. Kyverno es el UNICO componente que se instala como
@@ -78,9 +78,6 @@ kind: Pipeline
 metadata:
   name: duel-devsecops
   namespace: openclaw-duel
-  labels:
-    app.kubernetes.io/part-of: redteam-agents
-    redteam.component: duel
 spec:
   params:
     - name: pr-diff
@@ -93,7 +90,7 @@ spec:
         Imagen BASE PUBLICA sobre la que corren los agentes. En k3s vanilla sin
         registry interno, el codigo se monta por ConfigMap sobre esta base. Debe
         ser una imagen que el cluster pueda pullear sin pull secret.
-      default: registry.access.redhat.com/ubi9/python-311
+      default: registry.access.redhat.com/ubi9/python-311:9.8
     - name: sample-app-image
       type: string
       description: >-
@@ -164,7 +161,7 @@ spec:
         steps:
           # --- materializar la fuente a escanear en el workspace ---------------
           - name: materialize-sast-source
-            image: registry.access.redhat.com/ubi9/ubi-minimal
+            image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
             securityContext:
               runAsNonRoot: true
               runAsUser: 1000
@@ -235,7 +232,7 @@ spec:
               echo "${rc}" > "$(workspaces.shared.path)/.gitleaks-rc"
           # --- veredicto SAST: informativo o bloqueante ------------------------
           - name: sast-verdict
-            image: registry.access.redhat.com/ubi9/ubi-minimal
+            image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
             securityContext:
               runAsNonRoot: true
               runAsUser: 1000
@@ -297,7 +294,7 @@ spec:
           - name: shared
         steps:
           - name: materialize-source
-            image: registry.access.redhat.com/ubi9/ubi-minimal
+            image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
             volumeMounts:
               - name: sample-src
                 mountPath: /var/sample-src
@@ -361,7 +358,7 @@ spec:
               - --context=dir://$(workspaces.shared.path)/ctx-sample-app
               - --dockerfile=$(workspaces.shared.path)/ctx-sample-app/Containerfile
               - --destination=$(params.sample-app-image)
-              # PUSH REAL al registry interno Zot (ya no --no-push). Zot es HTTP
+              # PUSH REAL al registry interno Zot . Zot es HTTP
               # interno -> --insecure (push) y --insecure-pull (si la base viniera
               # del mismo registry; aquí la base es registry.redhat.com, HTTPS).
               - --insecure
@@ -372,7 +369,7 @@ spec:
               - --digest-file=$(workspaces.shared.path)/image-digest.txt
               - --verbosity=info
           - name: record-image-ref
-            image: registry.access.redhat.com/ubi9/ubi-minimal
+            image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
             securityContext:
               runAsNonRoot: true
               runAsUser: 1000
@@ -462,7 +459,7 @@ spec:
               - spdx-json=$(workspaces.shared.path)/sbom.spdx.json
           # STEP record: deja constancia y fija el Result (ubi-minimal, con shell).
           - name: record-sbom
-            image: registry.access.redhat.com/ubi9/ubi-minimal
+            image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
             workingDir: $(workspaces.shared.path)
             securityContext:
               runAsNonRoot: true
@@ -568,7 +565,7 @@ spec:
     # === ETAPA 5: SIGN (cosign, firma del supply chain) =====================
     # cosign firma la IMAGEN DEL REGISTRY Zot POR DIGEST con la CLAVE del duelo
     # (Secret duel-cosign-keys). Ahora SI hay registry con la imagen empujada
-    # (etapa build) -> firma REAL de imagen (cosign sign), no del blob del tar.
+    # (etapa build) -> firma REAL de imagen (cosign sign).
     # cosign SUBE la firma al registry (Zot la almacena como artefacto OCI,
     # .sig junto a la imagen). Como Zot es HTTP interno sin auth:
     # --allow-insecure-registry. --tlog-upload=false => offline (sin Rekor).
@@ -624,7 +621,7 @@ spec:
           # leer ficheros ni componer strings). Los step results son referenciables
           # en command/args/env de un step POSTERIOR del mismo Task.
           - name: compose-ref
-            image: registry.access.redhat.com/ubi9/ubi-minimal
+            image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
             workingDir: $(workspaces.shared.path)
             results:
               - name: image-ref-by-digest
@@ -692,7 +689,7 @@ spec:
           # STEP record: deja constancia y fija el Result (ubi-minimal, con shell).
           # Lee la ref por digest del step result anterior (interpolado en el echo).
           - name: record-sign
-            image: registry.access.redhat.com/ubi9/ubi-minimal
+            image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
             workingDir: $(workspaces.shared.path)
             securityContext:
               runAsNonRoot: true
@@ -872,7 +869,7 @@ spec:
 
               printf '%s' "${decision}" | tr -d '\n' > "$(results.decision.path)"
           - name: simulate-merge
-            image: registry.access.redhat.com/ubi9/ubi-minimal
+            image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
             securityContext:
               runAsNonRoot: true
               runAsUser: 1000
@@ -899,7 +896,7 @@ spec:
               name: duel-agent-src
 
     # === ETAPA 7: VERIFY (cosign, verificacion de la firma) =================
-    # cosign verifica la firma del blob del tar con la clave PUBLICA (cadena
+    # cosign verifica la firma de la imagen (por digest en Zot) con la clave PUBLICA (cadena
     # firma->verificacion). Demuestra que la supply chain de la IMAGEN esta intacta.
     # PUNTO CLAVE DE LA CHARLA: la firma VERIFICA CORRECTAMENTE porque el PR
     # envenenado NO toco la imagen (solo config) -> la firma NO detecta el ataque.
@@ -933,7 +930,7 @@ spec:
           # (repo SIN tag + @sha256:...). Firmar/verificar por digest (no por tag) es
           # la buena practica: el tag es mutable, el digest no.
           - name: compose-ref
-            image: registry.access.redhat.com/ubi9/ubi-minimal
+            image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
             workingDir: $(workspaces.shared.path)
             securityContext:
               runAsNonRoot: true
@@ -990,7 +987,7 @@ spec:
           # Si llegamos aqui, cosign verifico OK (si no, el step anterior habria
           # fallado la task). El Result OK habilita el when de deploy-gitops.
           - name: record-verify
-            image: registry.access.redhat.com/ubi9/ubi-minimal
+            image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
             workingDir: $(workspaces.shared.path)
             securityContext:
               runAsNonRoot: true
@@ -1014,7 +1011,7 @@ spec:
               secretName: duel-cosign-keys
 
     # === ETAPA 8: DEPLOY GitOps (Argo CD) ===================================
-    # SOLO si decision==APPROVE Y verify-status in (OK, SKIPPED): promueve via
+    # SOLO si decision==APPROVE Y verify-status==OK: promueve via
     # Argo CD. AQUI entra la ADMISION: Kyverno rechaza el Deployment si no lleva la
     # anotacion de aprobacion-humana (defensa en capas). El agente aprobo y la firma
     # verifico, PERO la policy de admision para el ataque.
@@ -1025,11 +1022,11 @@ spec:
         - input: "$(tasks.gate-blue.results.decision)"
           operator: in
           values: ["APPROVE"]
-        # La verificacion de firma NO debe haber fallado (OK o SKIPPED por no haber
-        # registro; FAIL abortaria el deploy). Cadena firma->verificacion->deploy.
+        # Fail-closed: solo se despliega una imagen con firma VERIFICADA. SKIPPED
+        # (sin firma) o FAIL bloquean el deploy. Cadena firma->verificacion->deploy.
         - input: "$(tasks.verify.results.verify-status)"
           operator: in
-          values: ["OK", "SKIPPED"]
+          values: ["OK"]
       workspaces:
         - name: shared
           workspace: shared
@@ -1038,7 +1035,7 @@ spec:
           - name: shared
         steps:
           - name: argocd-apply
-            image: registry.access.redhat.com/ubi9/ubi-minimal
+            image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
             volumeMounts:
               - name: argo-app
                 mountPath: /var/argo-app

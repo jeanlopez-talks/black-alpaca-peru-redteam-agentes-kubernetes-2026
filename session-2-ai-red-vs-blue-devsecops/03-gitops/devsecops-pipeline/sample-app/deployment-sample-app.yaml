@@ -1,0 +1,59 @@
+# Deployment de la APP DE EJEMPLO: "la carga util" que Argo CD despliega cuando el
+# gate del agente azul aprueba el PR (Acto 3).
+#
+# Imagen: la que el pipeline CONSTRUYE, EMPUJA a Zot y FIRMA con cosign. Asi la
+# policy verifyImages de Kyverno la verifica en admision (y la resuelve a digest).
+# Requisito de plataforma: los nodos deben poder pullear del registry interno
+# (ver ../README.md, "Requisitos de plataforma").
+#
+# ADMISSION CONTROL (defensa en capas): este Deployment NO lleva la anotacion
+# 'duel.redteam/human-approved: "true"' a PROPOSITO. La ClusterPolicy
+# 'duel-require-human-approval' (../../admission-policies/) lo RECHAZA: aunque el
+# azul apruebe y la firma verifique (el ataque solo toca CONFIG, no la imagen), el
+# agente no puede poner esa anotacion; solo un humano tras revisar de verdad.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-app
+  namespace: openclaw-duel
+  labels:
+    app: sample-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sample-app
+  template:
+    metadata:
+      labels:
+        app: sample-app
+    spec:
+      containers:
+        - name: sample-app
+          image: zot.registry.svc.cluster.local:5000/openclaw-duel/sample-app:latest
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          # ubi9/nginx-120 corre como uid 1001 (grupo root); se declara explicito.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi

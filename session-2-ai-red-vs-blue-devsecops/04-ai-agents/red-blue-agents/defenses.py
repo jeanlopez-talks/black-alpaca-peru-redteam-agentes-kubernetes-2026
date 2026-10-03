@@ -17,7 +17,7 @@ del azul, sino DONDE estan las fronteras:
      "seguro". El merge sigue requiriendo humano.
   4. Separacion de credenciales + runner aislado (uid 1000, caps dropped, egress
      deny): aunque el PR pase, el radio de explosion esta acotado. Esta cuarta
-     frontera vive en ../../03-gitops/devsecops-pipeline/ (SecurityContext del runner + NetworkPolicy).
+     frontera vive en ../../03-gitops/devsecops-pipeline/base/ (ServiceAccount del runner + NetworkPolicies).
 
 Uso:
     python defenses.py            # antes/despues con el detector por reglas

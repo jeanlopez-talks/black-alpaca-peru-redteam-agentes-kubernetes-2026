@@ -1,29 +1,10 @@
-# Containerfile de la APP DE EJEMPLO que el pipeline construye (etapa BUILD, con
-# kaniko --no-push) y que Argo CD despliega (etapa DEPLOY). Es intencionalmente
-# trivial: un servidor web estatico sobre ubi9/nginx que sirve index.html.
+# Imagen de la APP DE EJEMPLO. La etapa build del pipeline la construye con kaniko,
+# la empuja a Zot y la firma con cosign; Argo CD la despliega (deployment-sample-app.yaml).
+# Es "la carga util que el atacante logra desplegar" si el gate del azul es enganado.
 #
-# Representa "la carga util que el atacante logra desplegar" cuando el gate del
-# agente azul es enganado (Acto 3): si el PR envenenado pasa, ESTA imagen es la
-# que termina corriendo en el cluster via GitOps. El radio de explosion es real:
-# lo aprobado se despliega solo.
-#
-# VANILLA SIN REGISTRY (honestidad): en k3s NO hay registry interno ni acceso a
-# los nodos (Flatcar inmutable), asi que la etapa BUILD construye con kaniko
-# --no-push (build REAL, imagen a un tar en el workspace) pero NO puede empujar
-# la imagen a ningun sitio ni, por tanto, el Deployment puede pullearla. Por eso
-# el Deployment de la app (deployment.yaml) despliega directamente la MISMA
-# imagen base publica (ubi9/nginx-120) + el index.html via ConfigMap. El build
-# con kaniko demuestra la etapa (es real) aunque la imagen construida no se use
-# como pull: es la limitacion honesta de un cluster sin registry.
-#
-# Imagen base publica (sin pull secret), el cluster es linux/amd64:
-#   registry.access.redhat.com/ubi9/nginx-120
-FROM registry.access.redhat.com/ubi9/nginx-120
+# ubi9/nginx-120 corre como uid 1001 (no root) y sirve en el 8080 no privilegiado.
+FROM registry.access.redhat.com/ubi9/nginx-120:9.8
 
-# El contenido web estatico. En k3s vanilla NO hay SCC que reasigne el uid; la
-# imagen ubi9/nginx ya corre como usuario no-root (uid 1001 del grupo root) y
-# sirve en el 8080 no privilegiado, asi que funciona sin cambios.
 COPY index.html /opt/app-root/src/
 
-# ubi9/nginx-120 ya define el CMD que arranca nginx en el 8080 (no privilegiado).
 CMD ["nginx", "-g", "daemon off;"]

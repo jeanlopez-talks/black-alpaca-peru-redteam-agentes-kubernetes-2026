@@ -46,7 +46,7 @@ Agrupado **por sesión**; cada sesión numerada en orden de flujo. Lo que usan a
 ├── session-2-ai-red-vs-blue-devsecops/                 # PROPUESTA 2 — rojo vs azul en el pipeline DevSecOps
 │   ├── 01-proposal/                    # sessionize-proposal.md, concept.md (4 actos)
 │   ├── 02-slides/
-│   ├── 03-gitops/                      # Argo CD: devsecops-pipeline/ (Tekton 8 etapas + Kyverno), backstage/
+│   ├── 03-gitops/                      # Argo CD: devsecops-pipeline/ (Tekton 8 etapas), admission-policies/ (Kyverno), backstage/
 │   └── 04-ai-agents/                   # red-blue-agents/ (A2A + cluster-evidence/), backstage-agent/
 │
 ├── shared/                         # común a ambas

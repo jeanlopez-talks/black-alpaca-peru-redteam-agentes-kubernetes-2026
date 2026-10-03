@@ -1,11 +1,8 @@
 # Namespace del duelo rojo-vs-azul (propuesta 2).
 # Separado de las 4 posturas de aislamiento (propuesta 1), mismo patron de
-# nombres openclaw-* (ver ../../../shared/lab-conventions.md). Aqui corre el revisor-LLM (azul)
+# nombres openclaw-* (ver ../../../../shared/lab-conventions.md). Aqui corre el revisor-LLM (azul)
 # como step del pipeline, en un runner aislado.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: openclaw-duel
-  labels:
-    app.kubernetes.io/part-of: redteam-agents
-    redteam.component: duel

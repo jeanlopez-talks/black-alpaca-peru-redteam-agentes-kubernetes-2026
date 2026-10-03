@@ -12,7 +12,7 @@ metadata:
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: black-alpaca-2026
-    black-alpaca.session: "1-isolation"
+    black-alpaca.session: ai-agent-isolation
   annotations:
     # sync-wave -1: antes que cualquier postura (las posturas van en wave 0/1).
     argocd.argoproj.io/sync-wave: "-1"

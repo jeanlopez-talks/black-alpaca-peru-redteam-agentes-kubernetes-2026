@@ -1,9 +1,15 @@
-# Kustomize de la APP DE EJEMPLO. Este es el directorio que Argo CD sincroniza
-# (ver application-sample-app.yaml): la Application apunta a ..
-# Separado del kustomization raiz del duelo a proposito — el pipeline/infra del
-# duelo y la carga desplegada son cosas distintas.
+# Lo que sincroniza la Application de Argo CD de la app de ejemplo
+# (application-sample-app.yaml). La fuente de la imagen (Containerfile +
+# index.html) la consume la etapa build del pipeline, no este kustomize.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: black-alpaca-2026
+      black-alpaca.session: ai-red-vs-blue-devsecops
+    includeSelectors: false
+
 resources:
-  - deployment.yaml
+  - deployment-sample-app.yaml
+  - service-sample-app.yaml

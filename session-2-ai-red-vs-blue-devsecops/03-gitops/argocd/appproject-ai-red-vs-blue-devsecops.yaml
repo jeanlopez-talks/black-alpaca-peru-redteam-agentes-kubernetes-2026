@@ -1,6 +1,6 @@
 # AppProject de Argo CD para la PROPUESTA 2 (duelo rojo vs azul + supply chain + Backstage).
 # Clúster k3s vanilla; Argo CD vive en el namespace `argocd` (NO openshift-gitops).
-# Proyecto SEPARADO del de la propuesta 1 (redteam-agents/aislamiento, que corre en OpenShift).
+# Proyecto SEPARADO del de la propuesta 1 (ai-agent-isolation).
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
@@ -8,7 +8,7 @@ metadata:
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: black-alpaca-2026
-    black-alpaca.session: "2-duel"
+    black-alpaca.session: ai-red-vs-blue-devsecops
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

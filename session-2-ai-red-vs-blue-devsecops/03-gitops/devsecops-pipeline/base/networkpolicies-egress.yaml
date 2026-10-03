@@ -6,7 +6,7 @@
 # internet — el LLM es LOCAL (vLLM en el namespace `inference`, ClusterIP). El
 # runner solo necesita llegar a ESE servicio interno, no salir del cluster.
 #
-# DOS FRONTERAS segun el modo (ver ../../04-ai-agents/red-blue-agents/README.md):
+# DOS FRONTERAS segun el modo (ver ../../../04-ai-agents/red-blue-agents/README.md):
 #   - MODO rules (default): egress deny-by-default salvo DNS. El runner NO sale a
 #     ningun sitio; los agentes deciden por reglas (sin LLM). Misma frontera que
 #     la postura bare-np y la frontera 4 del Acto 4: el radio de explosion del
@@ -23,9 +23,6 @@ kind: NetworkPolicy
 metadata:
   name: default-deny-egress
   namespace: openclaw-duel
-  labels:
-    app.kubernetes.io/part-of: redteam-agents
-    redteam.component: duel
 spec:
   podSelector: {}
   policyTypes:
@@ -37,9 +34,6 @@ kind: NetworkPolicy
 metadata:
   name: allow-dns-egress
   namespace: openclaw-duel
-  labels:
-    app.kubernetes.io/part-of: redteam-agents
-    redteam.component: duel
 spec:
   podSelector: {}
   policyTypes:
@@ -63,9 +57,6 @@ kind: NetworkPolicy
 metadata:
   name: allow-vllm-egress
   namespace: openclaw-duel
-  labels:
-    app.kubernetes.io/part-of: redteam-agents
-    redteam.component: duel
 spec:
   podSelector: {}
   policyTypes:
@@ -103,9 +94,6 @@ kind: NetworkPolicy
 metadata:
   name: allow-build-egress
   namespace: openclaw-duel
-  labels:
-    app.kubernetes.io/part-of: redteam-agents
-    redteam.component: duel
 spec:
   podSelector:
     matchExpressions:
@@ -139,7 +127,7 @@ metadata:
   namespace: openclaw-duel
   labels:
     app.kubernetes.io/part-of: black-alpaca-2026
-    black-alpaca.session: "2-duel"
+    black-alpaca.session: ai-red-vs-blue-devsecops
 spec:
   # Aplica a los pods de las tasks que tocan el registry.
   podSelector:

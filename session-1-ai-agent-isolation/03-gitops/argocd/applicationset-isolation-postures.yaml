@@ -17,7 +17,7 @@ metadata:
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: black-alpaca-2026
-    black-alpaca.session: "1-isolation"
+    black-alpaca.session: ai-agent-isolation
 spec:
   # goTemplate permite usar sintaxis {{.posture}} y helpers de Go templates.
   goTemplate: true
@@ -42,7 +42,7 @@ spec:
       name: "ai-agent-isolation-{{.posture}}"
       labels:
         app.kubernetes.io/part-of: black-alpaca-2026
-        black-alpaca.session: "1-isolation"
+        black-alpaca.session: ai-agent-isolation
       # sync-wave por postura: kata (1) se aplica despues del operator (-1)
       # y despues de las demas posturas (0).
       annotations:

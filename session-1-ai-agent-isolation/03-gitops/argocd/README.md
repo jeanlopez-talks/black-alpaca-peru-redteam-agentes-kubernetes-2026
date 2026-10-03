@@ -33,4 +33,4 @@ oc apply -f applicationset-isolation-postures.yaml
 
 - AppProject: `ai-agent-isolation`
 - Applications: `isolation-<component>` (kebab-case, inglés)
-- Labels estándar: `app.kubernetes.io/part-of: black-alpaca-2026`, `black-alpaca.session: "1-isolation"`
+- Labels estándar: `app.kubernetes.io/part-of: black-alpaca-2026`, `black-alpaca.session: ai-agent-isolation`
