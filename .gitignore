@@ -2,14 +2,14 @@
 
 # PDFs de trabajo, salvo el one-pager que se adjunta al CFP
 *.pdf
-!session-1-isolation/01-proposal/one-pager.pdf
+!session-1-ai-agent-isolation/01-proposal/one-pager.pdf
 
 # Python
 **/.venv/
 __pycache__/
 *.pyc
 
-# Laboratorio: los resultados (results*.json, 04-lab/probes/results/) SÍ se versionan (evidencia propia).
+# Laboratorio: los resultados (results*.json, boundary-probes/results/) SÍ se versionan (evidencia propia).
 **/*.local.*
 **/values.local.yaml
 

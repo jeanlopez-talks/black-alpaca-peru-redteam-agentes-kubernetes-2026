@@ -34,24 +34,25 @@ Charla: *"¿Qué controles siguen importando cuando el modelo deja de rechazar? 
 propuesta vive dentro de su carpeta, y solo lo que usan ambas va en `shared/`:
 
 ```
-session-1-isolation/      PROPUESTA 1 — agente como víctima (aislamiento, 8 vectores, 4 posturas)
+session-1-ai-agent-isolation/      PROPUESTA 1 — agente como víctima (aislamiento, 8 vectores, 4 posturas)
   01-proposal/            sessionize-proposal.md, technical-paper.md, one-pager.md (→ PDF adjunto)
   02-slides/              index.html
-  03-gitops/              argocd/, operators/sandboxed-containers/, postures/{bare,bare-np,ssh,kata}/
-  04-lab/                 escalation/ (8 vectores), probes/ (fronteras + collect_results.sh → probes/results/)
-session-2-duel/           PROPUESTA 2 — duelo rojo vs azul en pipeline DevSecOps
+  03-gitops/              argocd/, operators/sandboxed-containers/, isolation-postures/{bare,bare-np,ssh,kata}/
+  04-attack-lab/          privilege-escalation/ (8 vectores), boundary-probes/ (fronteras + collect_results.sh → results/)
+session-2-ai-red-vs-blue-devsecops/           PROPUESTA 2 — duelo rojo vs azul en pipeline DevSecOps
   01-proposal/            sessionize-proposal.md, concept.md (diseño en 4 actos)
   02-slides/              index.html
-  03-gitops/              argocd/, pipeline/ (Tekton 8 etapas + kyverno/), backstage/
-  04-lab/                 duel/ (agentes A2A + cluster-evidence/), backstage-agent/
+  03-gitops/              argocd/, devsecops-pipeline/ (Tekton 8 etapas + kyverno/), backstage/
+  04-ai-agents/           red-blue-agents/ (agentes A2A + cluster-evidence/), backstage-agent/
 shared/                   classifier/ (ambas), lab-conventions.md, gitops-architecture.md,
                           event-research-2025.md, slides-index.html (portada de ambas)
 ```
 
 - Las carpetas de sesión van numeradas en orden de flujo: propuesta → slides → despliegue (`03-gitops`,
-  estado declarativo: las víctimas/el pipeline) → ataque y medición (`04-lab`, scripts imperativos y código
-  de los agentes; no duplica GitOps).
-- **Rutas siempre relativas** al archivo que las menciona (`../04-lab/duel/`), nunca desde la raíz, para que
+  estado declarativo: las víctimas/el pipeline) → lo imperativo (`04-attack-lab` en la sesión 1: ataques y medición;
+  `04-ai-agents` en la sesión 2: código de los agentes). No duplica GitOps.
+- Nombres de carpeta que digan qué contienen (`privilege-escalation`, no `escalation`; `red-blue-agents`, no `duel`).
+- **Rutas siempre relativas** al archivo que las menciona (`../04-ai-agents/red-blue-agents/`), nunca desde la raíz, para que
   mover carpetas no rompa referencias. Única excepción: el campo `path:` de las Applications de Argo CD,
   que por diseño es relativo a la raíz del repo.
 - Algo nuevo va en la carpeta de su sesión; a `shared/` solo si lo usan las dos.

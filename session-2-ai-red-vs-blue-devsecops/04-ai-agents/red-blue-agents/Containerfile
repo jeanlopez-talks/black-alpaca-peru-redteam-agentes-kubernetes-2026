@@ -1,0 +1,51 @@
+# Containerfile de los AGENTES del duelo (azul server/revisor + rojo client).
+#
+# El pipeline Tekton de ../../03-gitops/devsecops-pipeline/ consume ESTA imagen (el codigo ya va dentro
+# en /opt/duel — NO se monta por ConfigMap).
+#
+# Dos modos en runtime (ver README.md), seleccionados por env vars:
+#   AGENT_MODE=rules  (default) -> decision por reglas, SIN API key ni egress.
+#                                  Compatible con el egress deny-by-default del runner.
+#   AGENT_MODE=llm              -> agentes LangChain + A2A real. Requiere
+#                                  LLM_PROVIDER/LLM_MODEL + la API key (de un Secret
+#                                  de K8s) y egress HTTPS a la API del LLM.
+#
+# Imagen base publica (sin pull secret), multi-arch, el cluster es linux/amd64:
+#   registry.access.redhat.com/ubi9/python-311
+#
+# COMO SE USA ESTA IMAGEN:
+#   - En el clúster k3s vanilla (../../03-gitops/devsecops-pipeline) NO se construye esta imagen: NO hay
+#     registry interno ni acceso a los nodos (Flatcar). El código se monta por
+#     ConfigMap sobre la imagen base pública ubi9/python-311 (ver ../../03-gitops/devsecops-pipeline/
+#     README.md, "Código de los agentes sin registry"). Este Containerfile queda
+#     como referencia / para uso LOCAL en laptop o si algún día hay registry.
+#   - Local con podman (si quieres una imagen autocontenida para probar):
+#         podman build -t localhost/openclaw-duel-blue:latest -f Containerfile .
+FROM registry.access.redhat.com/ubi9/python-311
+
+# uid 1000 en la imagen (coincide con el contrato ../../../shared/lab-conventions.md). En k3s
+# vanilla NO hay SCC: el uid 1000 fijo es el que corre (y el pipeline además fija
+# runAsUser:1000 en el pod). El grupo 0 y los --chown=1000:0 dejan el filesystem
+# escribible por el grupo root (compatibilidad amplia).
+USER 1000
+
+WORKDIR /opt/duel
+
+# Dependencias: se instalan SIEMPRE para habilitar el modo llm + A2A. El modo
+# rules no las usa, pero tenerlas no rompe nada (los imports de a2a/langchain son
+# tardios y con fallback). La imagen ubi9/python-311 ya trae un virtualenv activo
+# en /opt/app-root (VIRTUAL_ENV), escribible por el usuario: NO se usa --user
+# (falla dentro de un venv). pip instala en el venv y uvicorn queda en el PATH.
+COPY --chown=1000:0 requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Codigo de los agentes del duelo.
+COPY --chown=1000:0 blue_agent.py blue_a2a_server.py red_agent.py \
+     run_duel.py defenses.py review_pr.py llm_factory.py ./
+COPY --chown=1000:0 ./diffs diffs
+
+# Por defecto, modo rules (reproducible sin red ni API key).
+ENV AGENT_MODE=rules
+
+# Por defecto corre el duelo completo (Actos 1-4) en modo rules.
+ENTRYPOINT ["python", "run_duel.py", "--rules"]

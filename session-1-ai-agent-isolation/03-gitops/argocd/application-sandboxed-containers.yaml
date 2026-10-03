@@ -1,0 +1,44 @@
+# Application que instala el OpenShift Sandboxed Containers Operator (Kata).
+# Va en sync-wave "-1" para ejecutarse ANTES que la postura kata (wave "1"):
+# asi el RuntimeClass "kata" ya existe cuando se despliegan los pods kata.
+#
+# ADVERTENCIA OPERATIVA: esta Application incluye un KataConfig cuya aplicacion
+# REINICIA LOS NODOS WORKER del cluster para instalar el runtime kata. No es
+# una operacion inocua en produccion (ver ../operators/sandboxed-containers/).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: isolation-sandboxed-containers
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: black-alpaca-2026
+    black-alpaca.session: "1-isolation"
+  annotations:
+    # sync-wave -1: antes que cualquier postura (las posturas van en wave 0/1).
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: black-alpaca-isolation
+  source:
+    # AJUSTAR la URL al publicar el repo en GitHub.
+    repoURL: https://github.com/jeanpaul-lopez/black-alpaca-redteam-agentes-k8s.git
+    targetRevision: main
+    path: session-1-ai-agent-isolation/03-gitops/operators/sandboxed-containers
+  destination:
+    server: https://kubernetes.default.svc
+    # El namespace del operator lo crea el propio namespace.yaml del kustomize.
+    namespace: openshift-sandboxed-containers-operator
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      # La instalacion del operator via OLM puede tardar; reintentar con backoff.
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
