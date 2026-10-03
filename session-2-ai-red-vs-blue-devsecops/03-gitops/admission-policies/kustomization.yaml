@@ -1,8 +1,11 @@
-# Kustomize de las policies Kyverno (admission control) del flujo DevSecOps.
-# Son ClusterPolicy (cluster-scoped); las despliega la Application
-# `ai-red-vs-blue-devsecops-admission-policies` de Argo CD.
+# Policies de admisión del duelo (Kyverno, API CEL policies.kyverno.io/v1).
+# Son namespaced: solo aplican en devsecops-duel. Las despliega la Application
+# `ai-red-vs-blue-devsecops-admission-policies`, que además crea el namespace con
+# Pod Security (las policies existen antes que cualquier pod).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+
+namespace: devsecops-duel
 
 labels:
   - pairs:
@@ -11,7 +14,5 @@ labels:
     includeSelectors: false
 
 resources:
-  # Frena el ataque: exige aprobación humana que el agente no puede dar (Enforce).
-  - clusterpolicy-require-human-approval.yaml
-  # Verificación de firma cosign de las imágenes propias de Zot (Enforce).
-  - clusterpolicy-verify-images.yaml
+  - namespacedvalidatingpolicy-require-human-approval.yaml
+  - namespacedimagevalidatingpolicy-verify-images.yaml

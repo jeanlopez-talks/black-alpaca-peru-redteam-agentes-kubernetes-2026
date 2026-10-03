@@ -10,12 +10,13 @@ LLM) decide el merge. Se comunican por **A2A**. Lo sincroniza la Application
 ```
 devsecops-pipeline/
 ├── kustomization.yaml
-├── base/                              infraestructura del namespace
-│   ├── namespace-openclaw-duel.yaml
+├── base/                              infraestructura del namespace (lo crea admission-policies)
 │   ├── serviceaccount-duel-runner.yaml    runner SIN token de API ni RBAC
 │   ├── networkpolicies-egress.yaml        deny-by-default + DNS, vLLM, Zot, 443 por task
-│   ├── llm-config.yaml                    ConfigMap + Secret dummy del LLM local (vLLM)
-│   └── cosign-secret.local.yaml           (local, ignorado por Git)
+│   ├── llm-config.yaml                    ConfigMap del LLM local (vLLM, sin secreto)
+│   ├── serviceaccount-openbao-reader.yaml identidad del SecretStore (no se monta en pods)
+│   ├── secretstore-openbao.yaml           rol de OpenBao que solo lee la clave de firma
+│   └── externalsecret-duel-cosign-keys.yaml  par de claves cosign desde OpenBao
 ├── tekton/
 │   ├── pipeline-devsecops.yaml            Pipeline `duel-devsecops` (8 etapas)
 │   └── pipelinerun-poisoned-pr.yaml       corre el pipeline contra el PR envenenado
@@ -29,7 +30,7 @@ devsecops-pipeline/
     └── deploy-notes.md                    el config del PR envenenado, entrada del SAST
 ```
 
-Las `ClusterPolicy` de Kyverno viven aparte, en `../admission-policies/`.
+Las policies de Kyverno (namespaced) viven aparte, en `../admission-policies/`.
 
 ## Las 8 etapas
 
@@ -70,44 +71,49 @@ El PR envenenado modifica **config** (`config/deploy-notes.md`), no la imagen:
 
 ## Requisitos de plataforma (repo del homelab, no este)
 
-- Tekton Pipelines, Argo CD (ns `argocd`) y Kyverno con `--allowInsecureRegistry=true`.
-- Registry Zot en `zot.registry.svc.cluster.local:5000` (HTTP interno).
-- **Los nodos deben poder descargar imágenes de Zot** para que el Deployment arranque: el
-  kubelet no resuelve nombres `*.svc.cluster.local`, así que hace falta exponer el registry
-  y declararlo como mirror en `registries.yaml` de k3s. Hoy **no está configurado**.
+- Tekton Pipelines, Argo CD (ns `argocd`), Kyverno v1.19 y External Secrets.
+- Registry Zot: el pipeline escribe por la ruta interna (`zot.registry.svc.cluster.local:5000`)
+  y los nodos y Kyverno leen por `registry.labjp.xyz` (Gateway interno, TLS de Let's Encrypt).
+- **OpenBao**: rol `black-alpaca-duel-pipeline` (auth kubernetes) ligado a
+  `devsecops-duel/openbao-reader`, con política de solo lectura sobre
+  `homelab/data/apps/black-alpaca/duel-cosign-keys`.
 - StorageClass `nfs-writable` (workspace RWX) y vLLM `qwen3-8b` en el ns `inference` (modo `llm`).
 - El repo es **privado**: Argo CD necesita credenciales de solo lectura para el `repoURL`.
 
 ## Ejecutar
 
-El material **no está desplegado** en el clúster; estos son los pasos para la demo.
+El material **no está desplegado** en el clúster. Para la demo se despliega con Argo CD
+(`../argocd/`: `kubectl apply -k ../argocd`) y se sincroniza a mano la Application del
+pipeline, que lanza el PipelineRun:
 
 ```bash
-kubectl create namespace openclaw-duel
-
-# Clave cosign: nunca va a Git (ver «Clave cosign»)
-cosign generate-key-pair k8s://openclaw-duel/duel-cosign-keys
-
-# Código de los agentes como ConfigMap (fuente única: 04-ai-agents/red-blue-agents)
-kubectl -n openclaw-duel create configmap duel-agent-src \
-  --from-file=../../04-ai-agents/red-blue-agents/ --dry-run=client -o yaml | kubectl apply -f -
-
-# Pipeline + PipelineRun (o las Applications de ../argocd/)
-kubectl apply -k .
-tkn pipelinerun logs duel-devsecops-poisoned -n openclaw-duel -f
+argocd app sync ai-red-vs-blue-devsecops-pipeline
+tkn pipelinerun logs duel-devsecops-poisoned -n devsecops-duel -f
 ```
 
 - **Acto 1** (el azul bloquea, no hay deploy): en `tekton/pipelinerun-poisoned-pr.yaml` pon `pr-diff: pr-01-obvious.diff`.
 - **Modo `llm`** (A2A + vLLM local): `agent-mode: llm`. Si el LLM no responde, cae a `rules`.
-- **Repetir**: `kubectl -n openclaw-duel delete pipelinerun duel-devsecops-poisoned` y vuelve a aplicar.
+
+**Pendiente:** el código de los agentes rojo y azul aún llega por un ConfigMap
+(`duel-agent-src`) creado a mano desde `../../04-ai-agents/red-blue-agents/`. Lo correcto
+es una imagen propia firmada (como la del agente de Backstage), construida por el pipeline
+genérico de imágenes de la plataforma.
 
 ## Clave cosign
 
-El par de claves **no se versiona**. `cosign generate-key-pair k8s://openclaw-duel/duel-cosign-keys`
-crea el Secret con `cosign.key`, `cosign.pub` y `cosign.password` (el pipeline lee el password
-del Secret). Copia `cosign.pub` en `../admission-policies/clusterpolicy-verify-images.yaml`
+El par de claves **no se versiona ni se crea a mano en el clúster**: vive en OpenBao y
+llega por `ExternalSecret`. Se genera una vez fuera del clúster y se siembra:
+
+```bash
+COSIGN_PASSWORD="$(openssl rand -hex 32)" cosign generate-key-pair
+bao kv put homelab/apps/black-alpaca/duel-cosign-keys \
+  cosign.key=@cosign.key cosign.pub=@cosign.pub cosign.password="$COSIGN_PASSWORD"
+shred -u cosign.key
+```
+
+Copia `cosign.pub` en `../admission-policies/namespacedimagevalidatingpolicy-verify-images.yaml`
 para que la admisión verifique con la misma clave. En producción: KMS (`--key kms://...`) o
-firma keyless (OIDC + Fulcio/Rekor).
+firma *keyless* (OIDC + Fulcio/Rekor).
 
 ## SecurityContext
 

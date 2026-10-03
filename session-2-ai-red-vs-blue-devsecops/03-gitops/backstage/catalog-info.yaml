@@ -1,103 +1,80 @@
-# Catalogo de Backstage (entidades). Se monta en /app/catalog/catalog-info.yaml
-# y lo carga el catalog.locations del app-config.
-#
-# Define el SISTEMA del duelo y sus componentes para que el portal muestre, en
-# un solo sitio, el pipeline DevSecOps (Tekton), el estado GitOps (Argo CD) y el
-# agente human-in-the-loop. Las annotations son las que conectan cada plugin:
-#   - argocd/app-name           -> pestana Argo CD (Application del componente)
-#   - tekton.dev/cicd + k8s-id  -> pestana Tekton (PipelineRun/TaskRun)
-#   - backstage.io/kubernetes-id -> plugin kubernetes (recursos por label)
-apiVersion: v1
-kind: ConfigMap
+# Catálogo de Backstage de la charla. El portal (plataforma del homelab) lo registra como
+# Location apuntando a este archivo en el repo. Las anotaciones conectan cada plugin:
+#   argocd/app-name              -> pestaña Argo CD
+#   tekton.dev/cicd + k8s-id     -> pestaña Tekton (PipelineRun/TaskRun)
+#   backstage.io/kubernetes-id   -> plugin Kubernetes (recursos por etiqueta)
+apiVersion: backstage.io/v1alpha1
+kind: System
 metadata:
-  name: backstage-catalog
-  namespace: backstage
-  labels:
-    app.kubernetes.io/part-of: redteam-agents
-    redteam.component: backstage
-data:
-  catalog-info.yaml: |
-    ---
-    apiVersion: backstage.io/v1alpha1
-    kind: System
-    metadata:
-      name: duel-devsecops
-      title: Duelo DevSecOps (rojo vs azul)
-      description: >-
-        Flujo DevSecOps del duelo de la charla: pipeline Tekton
-        (sast/build/sbom/trivy/sign/gate/verify/deploy) + admision Kyverno +
-        despliegue GitOps por Argo CD. El agente human-in-the-loop resume y
-        propone acciones sobre este sistema.
-      annotations:
-        backstage.io/techdocs-ref: dir:.
-      tags: [redteam, devsecops, black-alpaca-2026]
-    spec:
-      owner: labjp-homelab
-    ---
-    apiVersion: backstage.io/v1alpha1
-    kind: Component
-    metadata:
-      name: duel-pipeline
-      title: Pipeline DevSecOps del duelo
-      description: >-
-        Pipeline Tekton 'duel-devsecops' en openclaw-duel. Encadena SAST, build
-        (kaniko), SBOM (syft), Trivy, firma (cosign), gate del agente azul,
-        verify y deploy GitOps. Kyverno frena el deploy sin aprobacion humana.
-      annotations:
-        # Plugin Argo CD: la Application que sincroniza la app de ejemplo del duelo.
-        argocd/app-name: ai-red-vs-blue-devsecops-sample-app
-        # Plugin Tekton + kubernetes: descubre PipelineRun/TaskRun por esta id.
-        tekton.dev/cicd: 'true'
-        backstage.io/kubernetes-id: duel-devsecops
-        # AJUSTAR: el namespace donde viven los PipelineRun del duelo.
-        backstage.io/kubernetes-namespace: openclaw-duel
-      tags: [tekton, kyverno, supply-chain]
-    spec:
-      type: service
-      lifecycle: experimental
-      owner: labjp-homelab
-      system: duel-devsecops
-    ---
-    apiVersion: backstage.io/v1alpha1
-    kind: Component
-    metadata:
-      name: backstage-devsecops-agent
-      title: Agente DevSecOps (human-in-the-loop)
-      description: >-
-        Agente interactivo que resume cada etapa del pipeline, explica por que se
-        aprobo/rechazo y PROPONE acciones (re-run, aprobar-con-anotacion, ticket)
-        que un humano confirma. Mitigacion clave: propone pero NO actua solo.
-      annotations:
-        backstage.io/kubernetes-id: backstage-devsecops-agent
-        backstage.io/kubernetes-namespace: backstage
-      tags: [agent, human-in-the-loop, langgraph]
-    spec:
-      type: service
-      lifecycle: experimental
-      owner: labjp-homelab
-      system: duel-devsecops
-      # El agente provee la API que consume Backstage (ver ../../04-ai-agents/backstage-agent).
-      providesApis: [devsecops-agent-api]
-    ---
-    apiVersion: backstage.io/v1alpha1
-    kind: API
-    metadata:
-      name: devsecops-agent-api
-      title: DevSecOps Agent API (FastAPI)
-      description: >-
-        API HTTP del agente: /summary (resumen del pipeline), /propose
-        (propuestas de accion), /approve (ejecuta SOLO con token humano).
-    spec:
-      type: openapi
-      lifecycle: experimental
-      owner: labjp-homelab
-      system: duel-devsecops
-      definition: |
-        openapi: 3.0.0
-        info:
-          title: DevSecOps Agent API
-          version: 0.1.0
-        paths:
-          /summary: { get: { summary: Resumen del estado del pipeline } }
-          /propose: { get: { summary: Propuestas de accion (no ejecuta) } }
-          /approve: { post: { summary: Ejecuta una propuesta (requiere token humano) } }
+  name: duel-devsecops
+  title: Duelo DevSecOps (rojo vs azul)
+  description: >-
+    Flujo DevSecOps del duelo: pipeline Tekton de 8 etapas, admisión Kyverno y
+    despliegue GitOps por Argo CD. El agente human-in-the-loop resume y propone
+    acciones sobre este sistema.
+  tags: [redteam, devsecops, black-alpaca-2026]
+spec:
+  owner: labjp-homelab
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: duel-pipeline
+  title: Pipeline DevSecOps del duelo
+  description: >-
+    Pipeline Tekton 'duel-devsecops' en devsecops-duel: SAST, build, SBOM, Trivy,
+    firma, gate del agente azul, verificación y deploy GitOps. Kyverno frena el
+    deploy sin aprobación humana.
+  annotations:
+    argocd/app-name: ai-red-vs-blue-devsecops-sample-app
+    tekton.dev/cicd: "true"
+    backstage.io/kubernetes-id: duel-devsecops
+    backstage.io/kubernetes-namespace: devsecops-duel
+  tags: [tekton, kyverno, supply-chain]
+spec:
+  type: service
+  lifecycle: experimental
+  owner: labjp-homelab
+  system: duel-devsecops
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: backstage-devsecops-agent
+  title: Agente DevSecOps (human-in-the-loop)
+  description: >-
+    Resume cada etapa del pipeline, explica por qué se aprobó o rechazó y PROPONE
+    acciones que un humano confirma con su token. Propone, pero no actúa solo.
+  annotations:
+    backstage.io/kubernetes-id: backstage-devsecops-agent
+    backstage.io/kubernetes-namespace: devsecops-agent
+  tags: [agent, human-in-the-loop, langgraph]
+spec:
+  type: service
+  lifecycle: experimental
+  owner: labjp-homelab
+  system: duel-devsecops
+  providesApis: [devsecops-agent-api]
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: devsecops-agent-api
+  title: DevSecOps Agent API
+  description: >-
+    /summary (estado del pipeline), /propose (propuestas, no ejecuta) y
+    /approve (ejecuta SOLO con token humano).
+spec:
+  type: openapi
+  lifecycle: experimental
+  owner: labjp-homelab
+  system: duel-devsecops
+  definition: |
+    openapi: 3.0.0
+    info:
+      title: DevSecOps Agent API
+      version: 0.1.0
+    paths:
+      /summary: { get: { summary: Resumen del estado del pipeline } }
+      /propose: { get: { summary: Propuestas de acción (no ejecuta) } }
+      /approve: { post: { summary: Ejecuta una propuesta (requiere token humano) } }

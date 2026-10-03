@@ -1,0 +1,23 @@
+# Agente DevSecOps (human-in-the-loop) que consume Backstage. El portal en sí es
+# plataforma del homelab; aquí solo va lo propio de la charla.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: devsecops-agent
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: black-alpaca-2026
+      black-alpaca.session: ai-red-vs-blue-devsecops
+    includeSelectors: false
+
+resources:
+  - serviceaccount-backstage-devsecops-agent.yaml
+  - serviceaccount-openbao-reader.yaml
+  - secretstore-openbao.yaml
+  - role-read-pipelineruns.yaml
+  - rolebinding-read-pipelineruns.yaml
+  - externalsecret-backstage-devsecops-agent.yaml
+  - deployment-backstage-devsecops-agent.yaml
+  - service-backstage-devsecops-agent.yaml
+  - networkpolicy-backstage-devsecops-agent.yaml

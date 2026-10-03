@@ -16,7 +16,7 @@ pipelines, imágenes, variables, etc., usar SIEMPRE una nomenclatura **correcta,
   Mismo concepto → mismo nombre en todo el repo. Prefijos de orden solo si aportan (`01-`, `02-`).
 - **Recursos k8s**: namespaces y objetos en kebab-case inglés; labels estándar
   `app.kubernetes.io/part-of`, `app.kubernetes.io/component`. Applications de Argo CD con nombre
-  `<project>-<component>` (ej. `ai-red-vs-blue-devsecops-pipeline`, `ai-red-vs-blue-devsecops-backstage`).
+  `<project>-<component>` (ej. `ai-red-vs-blue-devsecops-pipeline`, `ai-red-vs-blue-devsecops-backstage-agent`).
 - **Nada de espacios, acentos, mayúsculas ni caracteres especiales** en nombres de archivos/carpetas.
 
 > Esta regla aplica a todo lo que se cree de aquí en adelante. Si encuentras nombres viejos que no la
@@ -72,7 +72,8 @@ shared/                   classifier/ (ambas), lab-conventions.md, gitops-archit
 
 - 4 posturas de aislamiento: `bare`, `bare-np` (con NetworkPolicy), `ssh` (sandbox vía SSH/runc), `kata` (OpenShift, microVM). 6 fronteras medidas por postura.
 - Hallazgos incómodos (centrales a la charla): mediación de escritura de herramientas **falla en `ssh` y `kata`**; persistencia en el workspace **falla en las 4 posturas** (mapea a OWASP ASI06).
-- Separación de namespaces del blueprint: `openclaw-gateway` (credenciales) vs. `openclaw-sandbox` (uid 1000, sin credenciales) — usar esos nombres al escribir manifiestos.
+- Separación de namespaces del blueprint: `openclaw-gateway` (credenciales) vs. `openclaw-sandbox` (uid 1000, sin credenciales) — usar esos nombres al escribir manifiestos. (sesión 1)
+- Sesión 2: `devsecops-duel` (pipeline + agente rojo, carga no confiable, sin credenciales) vs. `devsecops-agent` (agente con tokens). Secretos solo por `ExternalSecret` desde un `SecretStore` propio con rol de OpenBao acotado a `apps/black-alpaca/*`; nunca el `ClusterSecretStore` global ni `Secret` versionados.
 
 ## Fechas (confirmadas, no recalcular)
 

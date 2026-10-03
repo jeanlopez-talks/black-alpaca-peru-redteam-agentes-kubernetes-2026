@@ -1,0 +1,87 @@
+# Agente DevSecOps (human-in-the-loop) que consume Backstage.
+#
+# Imagen propia (../../../04-ai-agents/backstage-agent/Containerfile) publicada en el
+# registry interno: las dependencias van dentro de la imagen, no se instalan en cada
+# arranque. Raíz de solo lectura; /tmp en un emptyDir.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backstage-devsecops-agent
+  namespace: devsecops-agent
+  labels:
+    app: backstage-devsecops-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backstage-devsecops-agent
+  template:
+    metadata:
+      labels:
+        app: backstage-devsecops-agent
+        # Lo usa el plugin Kubernetes de Backstage (catalog-info.yaml).
+        backstage.io/kubernetes-id: backstage-devsecops-agent
+    spec:
+      serviceAccountName: backstage-devsecops-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 0
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agent
+          image: registry.labjp.xyz/black-alpaca/backstage-devsecops-agent:0.1.0
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8080"
+            - name: PYTHONDONTWRITEBYTECODE # raíz de solo lectura
+              value: "1"
+            - name: DUEL_NAMESPACE
+              value: devsecops-duel
+            - name: ARGOCD_PROJECT
+              value: ai-red-vs-blue-devsecops
+            - name: LLM_PROVIDER
+              value: openai-compatible
+            - name: LLM_MODEL
+              value: qwen3-8b
+            - name: OPENAI_BASE_URL
+              value: http://vllm.inference.svc.cluster.local:8000/v1
+          envFrom:
+            - secretRef:
+                name: backstage-devsecops-agent # ExternalSecret (OpenBao)
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

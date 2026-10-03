@@ -1,0 +1,51 @@
+# Verifica la firma cosign de las imágenes propias del duelo en admisión.
+#
+# NO frena el ataque del duelo: el PR envenenado no toca la imagen, así que la imagen
+# está firmada y verifica. La firma es necesaria, pero no suficiente; lo que frena el
+# ataque es duel-require-human-approval.
+#
+# Firma con clave y SIN log de transparencia: el pipeline firma con --tlog-upload=false
+# porque el homelab no tiene un Rekor propio, así que aquí se ignora el tlog. Es una
+# limitación consciente y documentada; en producción, firma keyless (OIDC) con Rekor.
+#
+# La clave pública debe coincidir con el Secret duel-cosign-keys del pipeline.
+apiVersion: policies.kyverno.io/v1
+kind: NamespacedImageValidatingPolicy
+metadata:
+  name: duel-verify-images
+  namespace: devsecops-duel
+  annotations:
+    policies.kyverno.io/title: Verificar firma cosign de las imágenes del duelo
+    policies.kyverno.io/category: Supply Chain / Image Signing
+    policies.kyverno.io/severity: medium
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  webhookConfiguration:
+    timeoutSeconds: 30
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  matchImageReferences:
+    - glob: registry.labjp.xyz/devsecops-duel/*
+  attestors:
+    - name: cosign
+      cosign:
+        key:
+          data: |
+            -----BEGIN PUBLIC KEY-----
+            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2p1G5lgtR2vK4+J2DKbSwrNvQZMX
+            E6H+aVFyUTSAsEen5tCNso7Covqv3ZH2l36qk9ybMjWhyEwWeDukgOrsDQ==
+            -----END PUBLIC KEY-----
+        ctlog:
+          insecureIgnoreTlog: true
+  validations:
+    - expression: >-
+        images.containers.map(image, verifyImageSignatures(image, [attestors.cosign])).all(e, e > 0)
+      message: La imagen no está firmada con la clave cosign del duelo.

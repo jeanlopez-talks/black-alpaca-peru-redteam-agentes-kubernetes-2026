@@ -1,7 +1,8 @@
-# Application de Argo CD que despliega el PIPELINE del duelo (propuesta 2):
-# pipeline Tekton de 8 etapas + supply chain + sample-app. Kyverno (admission)
-# se gestiona por su propia Application (application-kyverno.yaml) porque sus
-# ClusterPolicy son cluster-scoped.
+# Pipeline Tekton de 8 etapas del duelo. Corre en devsecops-duel, que crea (con Pod
+# Security) la Application de admission-policies.
+#
+# Sync MANUAL a propósito: sincronizar lanza el PipelineRun, es decir, la demo del
+# ataque. Se ejecuta cuando alguien lo decide, no en cada commit.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -20,10 +21,11 @@ spec:
     path: session-2-ai-red-vs-blue-devsecops/03-gitops/devsecops-pipeline
   destination:
     server: https://kubernetes.default.svc
-    namespace: openclaw-duel
+    namespace: devsecops-duel
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 20s
+        factor: 2
+        maxDuration: 3m

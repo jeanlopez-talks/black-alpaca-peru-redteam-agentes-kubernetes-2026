@@ -1,0 +1,10 @@
+# Lectura de los PipelineRun del duelo, acotada a su namespace (no ClusterRole).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backstage-devsecops-agent-read-pipelineruns
+  namespace: devsecops-duel
+rules:
+  - apiGroups: [tekton.dev]
+    resources: [pipelineruns]
+    verbs: [get, list, watch]

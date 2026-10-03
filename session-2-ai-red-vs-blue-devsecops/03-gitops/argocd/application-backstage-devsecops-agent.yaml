@@ -1,46 +1,42 @@
-# Application de Argo CD que DESPLIEGA Backstage (IDP) + el agente DevSecOps.
-# VERSION KUBERNETES VANILLA (k3s): Argo CD esta instalado en el namespace
-# `argocd` (NO openshift-gitops), igual que la Application del duelo.
+# Agente DevSecOps (human-in-the-loop) que consume Backstage. Vive en su propio
+# namespace, devsecops-agent, separado del pipeline donde corre el agente rojo: aquí
+# están las credenciales (token humano y token de Argo CD), allí la carga no confiable.
+# El portal Backstage es plataforma del homelab.
 #
-# TODO GESTIONADO POR GITOPS: Backstage, su app-config/plugins, el agente
-# human-in-the-loop y su RBAC se sincronizan desde ../backstage/ por Argo CD.
-# Aplicar esta Application al namespace argocd:
-#   kubectl apply -f application-backstage.yaml
-#
-# PASO MANUAL (sin registry): antes del sync, crear el ConfigMap con el codigo
-# del agente (ver README.md, "Codigo del agente sin registry"):
-#   kubectl -n backstage create configmap backstage-agent-src \
-#     --from-file=../../04-ai-agents/backstage-agent/ --dry-run=client -o yaml | kubectl apply -f -
-# (El namespace backstage lo crea esta Application con CreateNamespace=true; crea
-# primero el ns o aplica el ConfigMap despues del primer sync.)
+# Pod Security `restricted`: el agente no necesita ningún privilegio.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: ai-red-vs-blue-devsecops-backstage
-  # Argo CD vanilla vive en el namespace `argocd` (no openshift-gitops).
+  name: ai-red-vs-blue-devsecops-backstage-agent
   namespace: argocd
   labels:
-    app.kubernetes.io/part-of: redteam-agents
-    redteam.component: backstage
+    app.kubernetes.io/part-of: black-alpaca-2026
+    black-alpaca.session: ai-red-vs-blue-devsecops
+  annotations:
+    # Su Role de lectura vive en devsecops-duel, que crea admission-policies (-1).
+    argocd.argoproj.io/sync-wave: "1"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: ai-red-vs-blue-devsecops
   source:
-    # Mismo repoURL que la Application del pipeline.
     repoURL: https://github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026.git
     targetRevision: main
-    path: session-2-ai-red-vs-blue-devsecops/03-gitops/backstage
+    path: session-2-ai-red-vs-blue-devsecops/03-gitops/backstage/devsecops-agent
   destination:
     server: https://kubernetes.default.svc
-    namespace: backstage
+    namespace: devsecops-agent
   syncPolicy:
-    # Backstage no es parte del radio de explosion del duelo; se puede
-    # auto-sincronizar sin riesgo (a diferencia del deploy del duelo, que se deja
-    # manual a proposito). selfHeal revierte cambios manuales hacia git.
     automated:
       prune: true
       selfHeal: true
+    managedNamespaceMetadata:
+      labels:
+        app.kubernetes.io/part-of: black-alpaca-2026
+        black-alpaca.session: ai-red-vs-blue-devsecops
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/warn: restricted
     syncOptions:
       - CreateNamespace=true
     retry:

@@ -22,7 +22,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-egress
-  namespace: openclaw-duel
+  namespace: devsecops-duel
 spec:
   podSelector: {}
   policyTypes:
@@ -33,7 +33,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-dns-egress
-  namespace: openclaw-duel
+  namespace: devsecops-duel
 spec:
   podSelector: {}
   policyTypes:
@@ -56,7 +56,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-vllm-egress
-  namespace: openclaw-duel
+  namespace: devsecops-duel
 spec:
   podSelector: {}
   policyTypes:
@@ -93,7 +93,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-build-egress
-  namespace: openclaw-duel
+  namespace: devsecops-duel
 spec:
   podSelector:
     matchExpressions:
@@ -124,7 +124,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-registry-egress
-  namespace: openclaw-duel
+  namespace: devsecops-duel
   labels:
     app.kubernetes.io/part-of: black-alpaca-2026
     black-alpaca.session: ai-red-vs-blue-devsecops

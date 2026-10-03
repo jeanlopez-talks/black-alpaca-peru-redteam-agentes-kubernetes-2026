@@ -1,19 +1,20 @@
 # Pipeline DevSecOps del duelo rojo vs azul (8 etapas: sast -> build -> sbom ->
 # trivy-scan -> sign -> gate-blue -> verify -> deploy-gitops). Ver README.md.
 #
-#   base/        namespace, ServiceAccount del runner, NetworkPolicies, config del LLM
+#   base/        ServiceAccount del runner, NetworkPolicies, config del LLM
+#                (el namespace lo crea la Application de admission-policies, con Pod Security)
 #   tekton/      Pipeline + PipelineRun del PR envenenado
 #   sample-app/  la app objetivo (fuente de la imagen + manifiestos que despliega Argo CD)
 #   fixtures/    entrada realista para la etapa SAST
 #
-# Fuera de este kustomize: las ClusterPolicy de Kyverno (../admission-policies/,
-# Application propia), la clave cosign (Secret creado fuera de Git) y el codigo de
-# los agentes (ConfigMap duel-agent-src, ver README.md).
+# Fuera de este kustomize: las policies de Kyverno (../admission-policies/,
+# Application propia) y el codigo de los agentes (ConfigMap duel-agent-src, ver
+# README.md). La clave cosign llega por ExternalSecret desde OpenBao.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # Sin esto los configMapGenerator caen en 'default' y el pipeline no los encuentra.
-namespace: openclaw-duel
+namespace: devsecops-duel
 
 labels:
   - pairs:
@@ -22,8 +23,10 @@ labels:
     includeSelectors: false
 
 resources:
-  - base/namespace-openclaw-duel.yaml
   - base/serviceaccount-duel-runner.yaml
+  - base/serviceaccount-openbao-reader.yaml
+  - base/secretstore-openbao.yaml
+  - base/externalsecret-duel-cosign-keys.yaml
   - base/networkpolicies-egress.yaml
   - base/llm-config.yaml
   - tekton/pipeline-devsecops.yaml

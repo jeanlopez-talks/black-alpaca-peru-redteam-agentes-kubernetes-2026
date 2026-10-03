@@ -77,7 +77,7 @@ apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: duel-devsecops
-  namespace: openclaw-duel
+  namespace: devsecops-duel
 spec:
   params:
     - name: pr-diff
@@ -98,7 +98,7 @@ spec:
         kaniko la construye y la EMPUJA aqui (push real). cosign firma la imagen
         por digest, Trivy la escanea desde el registry y Kyverno verifica su firma
         en admision. El registry es HTTP interno -> las herramientas usan --insecure.
-      default: zot.registry.svc.cluster.local:5000/openclaw-duel/sample-app:latest
+      default: zot.registry.svc.cluster.local:5000/devsecops-duel/sample-app:latest
     - name: agent-mode
       type: string
       description: rules (default, solo stdlib, sin egress) | llm (A2A + LLM local vLLM).
@@ -573,7 +573,7 @@ spec:
     # COMPONER LA REF POR DIGEST: kaniko dejo el digest en image-digest.txt (algo
     # como "sha256:abcd..."). La ref a firmar es el REPO (sin el tag :latest) + "@"
     # + digest, p.ej.:
-    #   zot.registry.svc.cluster.local:5000/openclaw-duel/sample-app@sha256:abcd...
+    #   zot.registry.svc.cluster.local:5000/devsecops-duel/sample-app@sha256:abcd...
     # Firmar por DIGEST (no por tag) es la buena practica: el tag es mutable, el
     # digest es inmutable y es exactamente lo que se verifica despues.
     #
@@ -645,12 +645,12 @@ spec:
                 exit 1
               fi
               DIGEST="$(tr -d '[:space:]' < "${DIGEST_FILE}")"
-              # Repo = la imagen SIN el tag. IMG es host:5000/openclaw-duel/sample-app:latest.
+              # Repo = la imagen SIN el tag. IMG es host:5000/devsecops-duel/sample-app:latest.
               # Separamos el ultimo segmento (sample-app:latest), le quitamos ':tag'
               # y lo recomponemos con el resto del path -> repo sin tag.
               NAME_AND_TAG="${IMG##*/}"          # p.ej. sample-app:latest
               NAME="${NAME_AND_TAG%%:*}"         # p.ej. sample-app
-              REPO="${IMG%/*}/${NAME}"           # host:5000/openclaw-duel/sample-app
+              REPO="${IMG%/*}/${NAME}"           # host:5000/devsecops-duel/sample-app
               REF="${REPO}@${DIGEST}"
               echo "[sign] ref por digest: ${REF}"
               printf '%s' "${REF}" | tr -d '\n' > "$(step.results.image-ref-by-digest.path)"
@@ -781,10 +781,6 @@ spec:
                 drop: ["ALL"]
               seccompProfile:
                 type: RuntimeDefault
-            envFrom:
-              - secretRef:
-                  name: duel-llm-secret
-                  optional: true
             volumeMounts:
               - name: agent-src
                 mountPath: /var/agent-src
@@ -953,7 +949,7 @@ spec:
               DIGEST="$(tr -d '[:space:]' < "${DIGEST_FILE}")"
               NAME_AND_TAG="${IMG##*/}"          # sample-app:latest
               NAME="${NAME_AND_TAG%%:*}"         # sample-app
-              REPO="${IMG%/*}/${NAME}"           # host:5000/openclaw-duel/sample-app
+              REPO="${IMG%/*}/${NAME}"           # host:5000/devsecops-duel/sample-app
               REF="${REPO}@${DIGEST}"
               printf '%s' "${REF}" | tr -d '\n' > "$(step.results.image-ref-by-digest.path)"
               echo "[verify] verificando imagen del registry: ${REF}"
@@ -1063,7 +1059,7 @@ spec:
               echo "[deploy] Aunque el gate del azul aprobo y la firma es valida, el"
               echo "[deploy] Deployment de la app NO lleva la anotacion"
               echo "[deploy]   duel.redteam/human-approved: \"true\""
-              echo "[deploy] -> la ClusterPolicy Kyverno 'duel-require-human-approval'"
+              echo "[deploy] -> la policy Kyverno 'duel-require-human-approval'"
               echo "[deploy]    RECHAZA el Deployment EN ADMISION. El agente no puede"
               echo "[deploy]    poner esa anotacion (no tiene RBAC de API). La firma no"
               echo "[deploy]    ayudo (el ataque toca CONFIG, no la imagen); la admision SI."

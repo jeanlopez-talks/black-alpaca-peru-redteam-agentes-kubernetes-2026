@@ -1,6 +1,14 @@
-# AppProject de Argo CD para la PROPUESTA 2 (duelo rojo vs azul + supply chain + Backstage).
-# Clúster k3s vanilla; Argo CD vive en el namespace `argocd` (NO openshift-gitops).
-# Proyecto SEPARADO del de la propuesta 1 (ai-agent-isolation).
+# AppProject de la PROPUESTA 2 (duelo rojo vs azul en el pipeline DevSecOps).
+#
+# Mínimo privilegio, porque quien escribe en el repo de la charla controla lo que se
+# despliega:
+#   - un único repo de origen;
+#   - solo dos namespaces, separados a propósito: devsecops-duel (pipeline y agente rojo,
+#     carga NO confiable, sin credenciales) y devsecops-agent (agente con tokens);
+#   - ámbito de clúster: solo esos dos Namespace, por nombre. Nada de ClusterRole,
+#     ClusterRoleBinding, CRD ni policies de clúster (las de Kyverno son namespaced);
+#   - lista explícita de tipos namespaced: sin Secret (los secretos llegan por
+#     ExternalSecret desde un SecretStore acotado).
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
@@ -13,34 +21,64 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   description: >-
-    Propuesta 2 de Black Alpaca 2026: flujo DevSecOps del duelo de agentes de IA
-    (pipeline Tekton de 8 etapas con supply chain) + portal Backstage + agente
-    interactivo. Todo gestionado por GitOps en un clúster k3s.
+    Propuesta 2 de Black Alpaca 2026: pipeline DevSecOps de 8 etapas con supply chain,
+    admisión Kyverno y el agente human-in-the-loop de Backstage.
 
-  # Repo de la charla.
   sourceRepos:
     - https://github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026.git
 
-  # Namespaces destino de esta propuesta.
   destinations:
     - server: https://kubernetes.default.svc
-      namespace: openclaw-duel      # pipeline del duelo + supply chain
+      namespace: devsecops-duel
     - server: https://kubernetes.default.svc
-      namespace: backstage          # portal + agente interactivo
-    - server: https://kubernetes.default.svc
-      namespace: kyverno            # admission control (si se gestiona por esta app)
+      namespace: devsecops-agent
 
-  # Recursos de ámbito de clúster que las Applications pueden crear.
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
-    # Kyverno ClusterPolicy (admission control del supply chain).
-    - group: kyverno.io
-      kind: ClusterPolicy
-    - group: apiextensions.k8s.io
-      kind: CustomResourceDefinition
+      name: devsecops-duel
+    - group: ""
+      kind: Namespace
+      name: devsecops-agent
 
-  # Recursos namespaced: "*" dentro de los namespaces ya acotados por destinations.
   namespaceResourceWhitelist:
-    - group: "*"
-      kind: "*"
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: apps
+      kind: Deployment
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+    - group: tekton.dev
+      kind: Pipeline
+    - group: tekton.dev
+      kind: PipelineRun
+    - group: policies.kyverno.io
+      kind: NamespacedValidatingPolicy
+    - group: policies.kyverno.io
+      kind: NamespacedImageValidatingPolicy
+    - group: external-secrets.io
+      kind: SecretStore
+    - group: external-secrets.io
+      kind: ExternalSecret
+
+  # Avisa si aparecen en estos namespaces recursos que no vienen de Git (deriva o
+  # algo creado a mano).
+  orphanedResources:
+    warn: true
+
+  # Rol de solo lectura para el agente DevSecOps: lee el estado de las Application de
+  # ESTE proyecto por la API de Argo CD, sin RBAC de Kubernetes en el namespace argocd.
+  # Su token se emite con `argocd proj role create-token` y se guarda en OpenBao.
+  roles:
+    - name: backstage-devsecops-agent-read
+      description: Solo lectura de las Application del proyecto (agente DevSecOps)
+      policies:
+        - p, proj:ai-red-vs-blue-devsecops:backstage-devsecops-agent-read, applications, get, ai-red-vs-blue-devsecops/*, allow

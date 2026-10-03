@@ -20,7 +20,7 @@
 #     README.md, "Código de los agentes sin registry"). Este Containerfile queda
 #     como referencia / para uso LOCAL en laptop o si algún día hay registry.
 #   - Local con podman (si quieres una imagen autocontenida para probar):
-#         podman build -t localhost/openclaw-duel-blue:latest -f Containerfile .
+#         podman build -t localhost/devsecops-duel-blue:latest -f Containerfile .
 FROM registry.access.redhat.com/ubi9/python-311:9.8
 
 # uid 1000 en la imagen (coincide con el contrato ../../../shared/lab-conventions.md). En k3s

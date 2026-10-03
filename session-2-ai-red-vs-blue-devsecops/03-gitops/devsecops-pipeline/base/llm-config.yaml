@@ -1,44 +1,11 @@
-# Secret + ConfigMap del proveedor LLM del duelo.
-#
-# VERSION KUBERNETES VANILLA (k3s): por defecto el duelo usa el LLM LOCAL del
-# cluster — vLLM sirviendo `qwen3-8b` con API OpenAI-compatible en
-# http://vllm.inference.svc.cluster.local:8000/v1 (ClusterIP interno, sin salir
-# del cluster). vLLM NO exige API key: se usa una key DUMMY ("not-needed").
-#
-# DIFERENCIA vs OpenShift: antes el modo llm apuntaba a un proveedor EXTERNO
-# (Anthropic/OpenAI/Google) y requeria egress HTTPS a internet + una API key
-# real. Aqui el modelo vive DENTRO del cluster: sin egress externo y sin secreto
-# de verdad. Es un punto de charla: el LLM local reduce la superficie (no hay
-# exfiltracion por el canal de una API de un tercero), pero el prompt injection
-# indirecta del PR envenenado funciona igual (el fallo es del agente, no del
-# proveedor).
-#
-# La key aqui es DUMMY y no es un secreto real; aun asi va en un Secret por
-# coherencia con el patron envFrom del pipeline. Si algun dia se usara un
-# proveedor externo, copia este archivo a `secret-llm-secret.local.yaml` (patron
-# ya ignorado por .gitignore: `*-secret.local.yaml`), pon la clave real ahi y
-# aplica ESE, no el versionado.
-#
-# El modo rules (AGENT_MODE=rules, por defecto) NO necesita este Secret: el
-# pipeline lo referencia como `optional: true`. Solo el modo llm lo usa.
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: duel-llm-secret
-  namespace: openclaw-duel
-type: Opaque
-stringData:
-  # LLM local vLLM: la key es DUMMY (vLLM no la valida). No es un secreto real.
-  OPENAI_API_KEY: "not-needed"
----
-# Proveedor, modelo y base URL del LLM (no son secretos): seleccionan el backend
-# en runtime. Por defecto, el LLM LOCAL del cluster (vLLM qwen3-8b).
+# Configuración del LLM local del duelo (vLLM `qwen3-8b`, API OpenAI-compatible) dentro
+# del clúster: sin egress a internet y sin secreto. vLLM no exige API key; el código usa
+# "not-needed" por defecto, así que no hay ningún Secret que versionar.
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: duel-llm-config
-  namespace: openclaw-duel
+  namespace: devsecops-duel
 data:
   # openai-compatible -> ChatOpenAI con base_url custom (ver ../../../04-ai-agents/red-blue-agents/llm_factory.py).
   LLM_PROVIDER: "openai-compatible"

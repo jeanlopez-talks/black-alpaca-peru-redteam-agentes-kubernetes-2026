@@ -37,7 +37,7 @@ spec:
     path: session-2-ai-red-vs-blue-devsecops/03-gitops/devsecops-pipeline/sample-app
   destination:
     server: https://kubernetes.default.svc
-    namespace: openclaw-duel
+    namespace: devsecops-duel
   syncPolicy:
     # --- Sync manual por defecto (demo controlada) -------------------------
     # Sin bloque `automated`: Argo CD muestra OutOfSync y espera un Sync manual.
@@ -47,4 +47,4 @@ spec:
     #   prune: true
     #   selfHeal: true
     syncOptions:
-      - CreateNamespace=false   # el namespace openclaw-duel ya existe (../base/namespace-openclaw-duel.yaml)
+      - CreateNamespace=false   # devsecops-duel lo crea la Application de admission-policies

@@ -1,0 +1,37 @@
+# LA CAPA QUE FRENA EL ATAQUE: exige aprobación humana en los Deployment del duelo.
+#
+# El agente azul puede aprobar el PR envenenado y la firma puede verificar (el ataque
+# toca config, no la imagen), pero sin la anotación `duel.redteam/human-approved: "true"`
+# el Deployment se rechaza en admisión. El agente no puede ponerla: su ServiceAccount no
+# tiene token de API ni RBAC (../devsecops-pipeline/base/serviceaccount-duel-runner.yaml).
+# Solo la añade un humano al revisar el cambio en Git.
+#
+# Namespaced: solo aplica en devsecops-duel; no puede afectar al resto del clúster.
+apiVersion: policies.kyverno.io/v1
+kind: NamespacedValidatingPolicy
+metadata:
+  name: duel-require-human-approval
+  namespace: devsecops-duel
+  annotations:
+    policies.kyverno.io/title: Exigir aprobación humana en devsecops-duel
+    policies.kyverno.io/category: Supply Chain / Admission Control
+    policies.kyverno.io/severity: high
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [apps]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [deployments]
+  validations:
+    - expression: >-
+        object.metadata.?annotations[?'duel.redteam/human-approved'].orValue('') == 'true'
+      message: >-
+        RECHAZADO POR ADMISIÓN: el Deployment no tiene la anotación
+        'duel.redteam/human-approved: "true"'. El gate del agente azul pudo aprobar
+        el PR, pero el deploy exige aprobación humana real.

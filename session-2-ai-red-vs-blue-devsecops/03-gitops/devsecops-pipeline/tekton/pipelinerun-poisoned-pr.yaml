@@ -10,7 +10,7 @@ apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   name: duel-devsecops-poisoned
-  namespace: openclaw-duel
+  namespace: devsecops-duel
   annotations:
     argocd.argoproj.io/sync-options: Force=true,Replace=true
 spec:

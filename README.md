@@ -86,8 +86,8 @@ pip install -r requirements.txt && python run_classifier.py
 cd session-2-ai-red-vs-blue-devsecops/04-ai-agents/red-blue-agents && python3 run_duel.py
 
 # Duelo en k3s (Tekton) — sesión 2. Requiere Tekton, Zot y Kyverno (plataforma del homelab).
-kubectl create namespace openclaw-duel
-cosign generate-key-pair k8s://openclaw-duel/duel-cosign-keys   # la clave nunca va a Git
+kubectl create namespace devsecops-duel
+cosign generate-key-pair k8s://devsecops-duel/duel-cosign-keys   # la clave nunca va a Git
 kubectl apply -k session-2-ai-red-vs-blue-devsecops/03-gitops/devsecops-pipeline/
 
 # Las 4 posturas con Argo CD — sesión 1

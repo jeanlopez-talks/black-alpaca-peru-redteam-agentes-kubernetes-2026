@@ -1,0 +1,9 @@
+# Todo lo de Argo CD de la propuesta 2 en un solo paso: kubectl apply -k .
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - appproject-ai-red-vs-blue-devsecops.yaml
+  - application-admission-policies.yaml
+  - application-devsecops-pipeline.yaml
+  - application-backstage-devsecops-agent.yaml
