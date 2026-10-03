@@ -46,9 +46,9 @@ bao kv put homelab/apps/black-alpaca/backstage-devsecops-agent \
 
 ## Pendiente
 
-- **Imagen del agente**: `registry.labjp.xyz/black-alpaca/backstage-devsecops-agent:0.1.0`
-  se construye desde `../../04-ai-agents/backstage-agent/Containerfile`; falta su
-  PipelineRun en el pipeline genérico de imágenes de la plataforma.
+- **Imagen de los agentes**: `registry.labjp.xyz/black-alpaca/devsecops-agents:0.1.0`
+  (`../../04-ai-agents/Containerfile`, entrypoint `approval-agent`); la construye y firma
+  el pipeline genérico de imágenes de la plataforma.
 - **LLM**: la plataforma solo admite en vLLM a agentgateway, kagent, kserve y gastos. Lo
   correcto es que el agente consuma el LLM vía **agentgateway**; mientras tanto degrada a
   modo plantilla.

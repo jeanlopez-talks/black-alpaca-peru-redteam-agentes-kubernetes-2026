@@ -1,0 +1,79 @@
+# Agente azul, postura ENDURECIDO (Acto 4): trata el diff como dato no confiable.
+# Servidor A2A (skill review-pr) en su propio pod sandbox: sin token de API, uid 1001,
+# raíz de solo lectura, sin capabilities. La red la acota networkpolicy-blue-reviewer.yaml.
+#
+# Lleva la aprobación humana porque es infraestructura revisada en Git: sin ella, la
+# policy duel-require-human-approval lo rechazaría (que es justo lo que debe pasar con
+# lo que no revisó un humano).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blue-reviewer-hardened
+  namespace: devsecops-duel
+  labels:
+    app.kubernetes.io/name: blue-reviewer
+    app.kubernetes.io/instance: blue-reviewer-hardened
+  annotations:
+    duel.redteam/human-approved: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: blue-reviewer-hardened
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: blue-reviewer
+        app.kubernetes.io/instance: blue-reviewer-hardened
+        backstage.io/kubernetes-id: blue-reviewer
+    spec:
+      serviceAccountName: blue-reviewer
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 0
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: blue-reviewer
+          image: registry.labjp.xyz/black-alpaca/devsecops-agents:0.1.0
+          command: ["blue-reviewer"]
+          ports:
+            - name: a2a
+              containerPort: 9999
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "9999"
+            - name: PUBLIC_URL
+              value: http://blue-reviewer-hardened.devsecops-duel.svc.cluster.local:9999/
+            - name: BLUE_HARDENED
+              value: "true"
+            - name: AGENT_MODE
+              value: rules # "llm" para que razone con el vLLM local
+          envFrom:
+            - configMapRef:
+                name: duel-llm-config
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # exec en lugar de httpGet: la NetworkPolicy de entrada no se abre al kubelet.
+          readinessProbe:
+            exec:
+              command: ["python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:9999/healthz', timeout=2)"]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:9999/healthz', timeout=2)"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

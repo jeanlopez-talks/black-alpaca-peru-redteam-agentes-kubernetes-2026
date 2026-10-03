@@ -1,22 +1,12 @@
-# NetworkPolicy del runner del duelo — VERSION KUBERNETES VANILLA (k3s).
+# NetworkPolicies del namespace del duelo: egress denegado por defecto y abierto solo lo
+# imprescindible por etapa.
 #
-# En k3s las NetworkPolicy funcionan igual que en cualquier Kubernetes (k3s trae
-# un controlador de NetworkPolicy por defecto). Mismo patron que la version
-# OpenShift, pero el egress del modo llm cambia: ya NO se abre HTTPS (443) a
-# internet — el LLM es LOCAL (vLLM en el namespace `inference`, ClusterIP). El
-# runner solo necesita llegar a ESE servicio interno, no salir del cluster.
-#
-# DOS FRONTERAS segun el modo (ver ../../../04-ai-agents/red-blue-agents/README.md):
-#   - MODO rules (default): egress deny-by-default salvo DNS. El runner NO sale a
-#     ningun sitio; los agentes deciden por reglas (sin LLM). Misma frontera que
-#     la postura bare-np y la frontera 4 del Acto 4: el radio de explosion del
-#     runner esta acotado.
-#   - MODO llm: se AÑADE egress al LLM local (namespace inference, TCP 8000).
-#     DIFERENCIA vs OpenShift (punto de charla): alli el modo llm abria egress a
-#     INTERNET (API de un tercero) — nueva superficie de exfiltracion. Aqui el
-#     modelo vive dentro del cluster: el egress que se abre es SOLO al servicio
-#     interno vllm.inference.svc, NO a internet. El trade-off se reduce, no
-#     desaparece (sigue siendo trafico este-oeste nuevo).
+#   - Todas las etapas: DNS.
+#   - build/sast/sbom/trivy-scan/sign/verify: HTTPS (pull de herramientas, DB de Trivy)
+#     y el registry interno.
+#   - gate-blue (agente rojo): SOLO el agente azul por A2A. Sin internet ni LLM.
+#   - Agente azul: su propia política (../agents/networkpolicy-blue-reviewer.yaml): solo
+#     DNS y el LLM local; solo acepta tráfico del rojo.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -55,26 +45,29 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-vllm-egress
+  name: allow-gate-blue-to-reviewer
   namespace: devsecops-duel
 spec:
-  podSelector: {}
+  # El step del rojo SOLO puede hablar con el agente azul por A2A (ni internet ni LLM).
+  podSelector:
+    matchLabels:
+      tekton.dev/pipelineTask: gate-blue
   policyTypes:
     - Egress
   egress:
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: inference
+              app.kubernetes.io/name: blue-reviewer
       ports:
         - protocol: TCP
-          port: 8000
+          port: 9999
 ---
 # Egress para las ETAPAS QUE SALEN A INTERNET legitimamente. Se permite HTTPS
 # (443) SOLO a los pods de estas tasks (label que Tekton pone a cada pod), no a
-# todos. El gate del agente azul (runtime del agente) queda igual: aislado salvo
-# el pip del sidecar. Separar el egress del tooling del supply chain del runtime
-# del agente es parte del blueprint de la charla.
+# todos. Los agentes (gate-blue y el azul) quedan fuera: sin internet. Separar el
+# egress del tooling del supply chain del runtime de los agentes es parte del
+# blueprint de la charla.
 #
 # POR QUE cada task necesita egress:
 #   - build      : kaniko pullea la imagen base del registry publico (443).
@@ -88,7 +81,7 @@ spec:
 #   - sign/verify: pull de la imagen cosign (443). La firma es con CLAVE y offline
 #                  (--tlog-upload=false / --insecure-ignore-tlog): no contacta
 #                  Rekor/Fulcio, pero la imagen de cosign si se pullea.
-#   - gate-blue  : pip del sidecar (a2a-sdk/uvicorn) desde PyPI (443).
+#   (gate-blue NO está aquí: el rojo no tiene salida a internet.)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -99,7 +92,7 @@ spec:
     matchExpressions:
       - key: tekton.dev/pipelineTask
         operator: In
-        values: ["build", "sast", "sbom", "trivy-scan", "sign", "verify", "gate-blue"]
+        values: ["build", "sast", "sbom", "trivy-scan", "sign", "verify"]
   policyTypes:
     - Egress
   egress:

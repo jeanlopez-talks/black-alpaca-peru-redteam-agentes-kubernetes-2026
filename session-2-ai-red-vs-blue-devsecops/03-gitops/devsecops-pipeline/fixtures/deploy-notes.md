@@ -2,7 +2,7 @@
   FUENTE DE ENTRADA PARA LA ETAPA SAST (semgrep + gitleaks).
 
   Este archivo replica el CONFIG que el PR envenenado del duelo modifica
-  (config/deploy-notes.md -> ver ../../../04-ai-agents/red-blue-agents/diffs/pr-02-poisoned.diff). Se monta en
+  (config/deploy-notes.md -> ver ../../../04-ai-agents/src/devsecops_agents/red_attacker/payloads.py, PR_02_POISONED). Se monta en
   la etapa sast via el ConfigMap duel-sast-input para que el escaneo tenga
   material REALISTA que analizar antes del build (shift-left).
 

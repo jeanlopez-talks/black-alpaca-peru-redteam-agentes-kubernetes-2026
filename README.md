@@ -47,7 +47,7 @@ Agrupado **por sesión**; cada sesión numerada en orden de flujo. Lo que usan a
 │   ├── 01-proposal/                    # sessionize-proposal.md, concept.md (4 actos)
 │   ├── 02-slides/
 │   ├── 03-gitops/                      # Argo CD: devsecops-pipeline/ (Tekton 8 etapas), admission-policies/ (Kyverno), backstage/
-│   └── 04-ai-agents/                   # red-blue-agents/ (A2A + cluster-evidence/), backstage-agent/
+│   └── 04-ai-agents/                   # agentes A2A (uv): azul, rojo y aprobación + evidence/
 │
 ├── shared/                         # común a ambas
 │   ├── classifier/                     # clasificador de prompt injection (resultados propios)
@@ -68,7 +68,7 @@ imperativo: en la sesión 1 los ataques que se lanzan contra ese despliegue, en 
 | Propuesta Sessionize (campos) | 1 y 2 | ✅ lista para pegar |
 | Clasificador de prompt injection | 1 y 2 | ✅ **ejecutado** — `shared/classifier/results.json` (0.999999 → 0.00048) |
 | Slides HTML | 1 y 2 | ✅ offline |
-| Duelo rojo vs azul + supply chain real | 2 | ✅ **corrió en k3s** (Zot + cosign + Kyverno) — `session-2-ai-red-vs-blue-devsecops/04-ai-agents/red-blue-agents/cluster-evidence/` |
+| Duelo rojo vs azul + supply chain real | 2 | ✅ **corrió en k3s** (Zot + cosign + Kyverno) — `session-2-ai-red-vs-blue-devsecops/04-ai-agents/evidence/` |
 | 4 posturas (manifiestos + Argo CD) | 1 | ✅ validados (kustomize + dry-run) · ⏳ falta desplegar y correr la matriz |
 | Documento técnico + one-pager | 1 | ✅ escritos · ⏳ falta exportar one-pager a PDF |
 
@@ -83,7 +83,7 @@ cd shared/classifier && python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt && python run_classifier.py
 
 # Duelo rojo vs azul (laptop, modo rules) — sesión 2
-cd session-2-ai-red-vs-blue-devsecops/04-ai-agents/red-blue-agents && python3 run_duel.py
+cd session-2-ai-red-vs-blue-devsecops/04-ai-agents && uv run run-duel   # los 4 actos por A2A
 
 # Duelo en k3s (Tekton) — sesión 2. Requiere Tekton, Zot y Kyverno (plataforma del homelab).
 kubectl create namespace devsecops-duel

@@ -17,6 +17,11 @@ devsecops-pipeline/
 │   ├── serviceaccount-openbao-reader.yaml identidad del SecretStore (no se monta en pods)
 │   ├── secretstore-openbao.yaml           rol de OpenBao que solo lee la clave de firma
 │   └── externalsecret-duel-cosign-keys.yaml  par de claves cosign desde OpenBao
+├── agents/                            agente azul como servicio A2A en sandbox
+│   ├── deployment-blue-reviewer.yaml       postura vulnerable (Actos 1-3)
+│   ├── deployment-blue-reviewer-hardened.yaml  postura endurecida (Acto 4)
+│   ├── service-*.yaml, serviceaccount-blue-reviewer.yaml (sin token de API)
+│   └── networkpolicy-blue-reviewer.yaml   entra solo el rojo; sale solo a DNS y LLM
 ├── tekton/
 │   ├── pipeline-devsecops.yaml            Pipeline `duel-devsecops` (8 etapas)
 │   └── pipelinerun-poisoned-pr.yaml       corre el pipeline contra el PR envenenado
@@ -41,7 +46,7 @@ Las policies de Kyverno (namespaced) viven aparte, en `../admission-policies/`.
 | 3 | `sbom` | Syft 1.18 | SBOM CycloneDX + SPDX | No |
 | 4 | `trivy-scan` | Trivy 0.58 | escanea la imagen de Zot (`HIGH,CRITICAL`) | Informativo |
 | 5 | `sign` | cosign 2.4.1 | firma la imagen **por digest**; la firma queda en Zot | Sí |
-| 6 | `gate-blue` | agentes A2A | rojo (step, cliente A2A) → azul (sidecar, servidor A2A) → `APPROVE`/`BLOCK` | Su decisión alimenta el `when` |
+| 6 | `gate-blue` | agentes A2A | el rojo (step, cliente A2A) envía el PR al azul (servicio A2A en sandbox) → `APPROVE`/`BLOCK` | Su decisión alimenta el `when` |
 | 7 | `verify` | cosign 2.4.1 | verifica la firma por digest con la clave pública | Sí |
 | 8 | `deploy-gitops` | — | solo si `APPROVE` **y** `verify-status == OK` (fail-closed) | — |
 
@@ -63,7 +68,7 @@ El PR envenenado modifica **config** (`config/deploy-notes.md`), no la imagen:
 
 | Pieza | Estado |
 |-------|--------|
-| SAST, build + push, SBOM, Trivy, firma y verificación | **Reales** contra Zot (evidencia: `../../04-ai-agents/red-blue-agents/cluster-evidence/k3s-supply-chain-run.md`) |
+| SAST, build + push, SBOM, Trivy, firma y verificación | **Reales** contra Zot (evidencia: `../../04-ai-agents/evidence/k3s-supply-chain-run.md`) |
 | Gate del azul (A2A) | **Real**: modo `rules` siempre; modo `llm` si vLLM responde |
 | Merge del PR | **Simulado**: el `duel-runner` no tiene RBAC de merge (frontera human-in-the-loop) |
 | `deploy-gitops` | Muestra el manifiesto real de la Application; el `kubectl apply` lo hace el operador (el runner no tiene credenciales) |
@@ -92,12 +97,22 @@ tkn pipelinerun logs duel-devsecops-poisoned -n devsecops-duel -f
 ```
 
 - **Acto 1** (el azul bloquea, no hay deploy): en `tekton/pipelinerun-poisoned-pr.yaml` pon `pr-diff: pr-01-obvious.diff`.
-- **Modo `llm`** (A2A + vLLM local): `agent-mode: llm`. Si el LLM no responde, cae a `rules`.
+- **Acto 4** (el azul endurecido contiene el ataque): `blue-reviewer-url` apuntando a
+  `http://blue-reviewer-hardened.devsecops-duel.svc.cluster.local:9999/`.
+- **Modo `llm`** (el azul razona con el vLLM local): `AGENT_MODE: llm` en el Deployment del
+  azul. Si el LLM no responde, cae a reglas.
 
-**Pendiente:** el código de los agentes rojo y azul aún llega por un ConfigMap
-(`duel-agent-src`) creado a mano desde `../../04-ai-agents/red-blue-agents/`. Lo correcto
-es una imagen propia firmada (como la del agente de Backstage), construida por el pipeline
-genérico de imágenes de la plataforma.
+## Agentes en sandbox
+
+Los agentes corren desde una imagen propia (`../../04-ai-agents/Containerfile`), sin
+`pip install` en runtime ni código montado por ConfigMap, y cada uno con lo mínimo:
+
+| Agente | Dónde corre | Identidad | Red |
+|--------|-------------|-----------|-----|
+| Azul (vulnerable y endurecido) | Deployment propio | SA sin token de API | entra solo el rojo; sale solo a DNS y al LLM |
+| Rojo | step `red-open-pr` de `gate-blue` | `duel-runner` sin token ni RBAC | sale solo hacia el azul (puerto A2A) |
+
+Todos: uid no-root, raíz de solo lectura, `drop: ALL`, `seccompProfile: RuntimeDefault`.
 
 ## Clave cosign
 

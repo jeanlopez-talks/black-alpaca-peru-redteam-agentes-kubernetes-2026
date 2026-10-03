@@ -60,21 +60,38 @@ apiVersion: backstage.io/v1alpha1
 kind: API
 metadata:
   name: devsecops-agent-api
-  title: DevSecOps Agent API
+  title: DevSecOps Approval Agent (A2A)
   description: >-
-    /summary (estado del pipeline), /propose (propuestas, no ejecuta) y
-    /approve (ejecuta SOLO con token humano).
+    Agente A2A con tres skills: summarize-pipeline (lectura), propose-actions (no
+    ejecuta) y execute-action (exige el token de un humano en Authorization: Bearer).
+  links:
+    - url: http://backstage-devsecops-agent.devsecops-agent.svc.cluster.local/.well-known/agent-card.json
+      title: AgentCard
 spec:
-  type: openapi
+  type: a2a
   lifecycle: experimental
   owner: labjp-homelab
   system: duel-devsecops
   definition: |
-    openapi: 3.0.0
-    info:
-      title: DevSecOps Agent API
-      version: 0.1.0
-    paths:
-      /summary: { get: { summary: Resumen del estado del pipeline } }
-      /propose: { get: { summary: Propuestas de acción (no ejecuta) } }
-      /approve: { post: { summary: Ejecuta una propuesta (requiere token humano) } }
+    protocol: A2A (JSON-RPC 2.0)
+    agentCard: /.well-known/agent-card.json
+    skills:
+      summarize-pipeline: '{"skill": "summarize-pipeline"}'
+      propose-actions: '{"skill": "propose-actions"}'
+      execute-action: '{"skill": "execute-action", "action_id": "approve:<run>"}  # Authorization: Bearer <token humano>'
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: blue-reviewer
+  title: Agente azul (revisor de PRs)
+  description: Servidor A2A (skill review-pr) en sandbox; versión vulnerable y endurecida.
+  annotations:
+    backstage.io/kubernetes-id: blue-reviewer
+    backstage.io/kubernetes-namespace: devsecops-duel
+  tags: [agent, a2a, code-review]
+spec:
+  type: service
+  lifecycle: experimental
+  owner: labjp-homelab
+  system: duel-devsecops

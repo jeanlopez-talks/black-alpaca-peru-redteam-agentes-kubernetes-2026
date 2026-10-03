@@ -43,7 +43,8 @@ session-2-ai-red-vs-blue-devsecops/           PROPUESTA 2 — duelo rojo vs azul
   01-proposal/            sessionize-proposal.md, concept.md (diseño en 4 actos)
   02-slides/              index.html
   03-gitops/              argocd/, devsecops-pipeline/ (base, tekton, sample-app, fixtures), admission-policies/, backstage/
-  04-ai-agents/           red-blue-agents/ (agentes A2A + cluster-evidence/), backstage-agent/
+  04-ai-agents/           paquete Python (uv) de los 3 agentes A2A: blue_reviewer, red_attacker,
+                          approval_agent (+ duel/, tests/, evidence/, Containerfile)
 shared/                   classifier/ (ambas), lab-conventions.md, gitops-architecture.md,
                           event-research-2025.md, slides-index.html (portada de ambas)
 ```
@@ -51,8 +52,8 @@ shared/                   classifier/ (ambas), lab-conventions.md, gitops-archit
 - Las carpetas de sesión van numeradas en orden de flujo: propuesta → slides → despliegue (`03-gitops`,
   estado declarativo: las víctimas/el pipeline) → lo imperativo (`04-attack-lab` en la sesión 1: ataques y medición;
   `04-ai-agents` en la sesión 2: código de los agentes). No duplica GitOps.
-- Nombres de carpeta que digan qué contienen (`privilege-escalation`, no `escalation`; `red-blue-agents`, no `duel`).
-- **Rutas siempre relativas** al archivo que las menciona (`../04-ai-agents/red-blue-agents/`), nunca desde la raíz, para que
+- Nombres de carpeta que digan qué contienen (`privilege-escalation`, no `escalation`; `approval-agent`, no `agent`).
+- **Rutas siempre relativas** al archivo que las menciona (`../04-ai-agents/src/`), nunca desde la raíz, para que
   mover carpetas no rompa referencias. Única excepción: el campo `path:` de las Applications de Argo CD,
   que por diseño es relativo a la raíz del repo.
 - Algo nuevo va en la carpeta de su sesión; a `shared/` solo si lo usan las dos.

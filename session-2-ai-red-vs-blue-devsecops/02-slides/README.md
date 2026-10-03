@@ -40,7 +40,7 @@ notas del ponente no se incluyen en el PDF.
 
 11 slides siguiendo el esqueleto de 50 min:
 portada · pitch inocente · reglas del duelo (agentes LangChain por A2A dentro de
-Tekton: rojo=client/step, azul=server/sidecar) · arquitectura de los agentes
+Tekton: rojo=client/step, azul=server en su propio sandbox) · arquitectura de los agentes
 (LangChain + A2A + AgentCard, modos `rules`/`llm`) · Acto 1 (azul gana) ·
 Acto 2a (evasión del clasificador) · Acto 2b (diff envenenado) ·
 Acto 3 (azul traiciona + egress 443 = nueva superficie) · Acto 4 (fronteras de
@@ -49,5 +49,5 @@ infra) · checklist + lab (ya ejecutado en OpenShift 4.22 real) · gracias.
 La arquitectura reflejada es la **ya construida y probada**: agentes reales
 (langgraph `create_react_agent` + tools) que se comunican por **A2A**
 (`a2a-sdk`), el azul como A2A server (AgentCard skill `review-pr`) y el rojo como
-A2A client, corriendo en Tekton (azul=sidecar, rojo=step; `merge-deploy` solo si
-`decision == APPROVE`). Ver `../04-ai-agents/red-blue-agents/README.md` y `../03-gitops/devsecops-pipeline/README.md`.
+A2A client, corriendo en Kubernetes (azul=servicio A2A en sandbox, rojo=step de Tekton sin red salvo el azul; `merge-deploy` solo si
+`decision == APPROVE`). Ver `../04-ai-agents/README.md` y `../03-gitops/devsecops-pipeline/README.md`.

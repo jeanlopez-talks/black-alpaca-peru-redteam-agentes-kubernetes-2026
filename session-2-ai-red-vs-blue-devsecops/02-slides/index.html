@@ -255,12 +255,12 @@
       <div class="center-stack">
         <div class="node pipe" style="width:100%">
           <div class="hdr">TASK · TEKTON</div>
-          <div class="sub">pod compartido · localhost:9999</div>
+          <div class="sub">pods separados · sandbox · A2A :9999</div>
         </div>
-        <div class="varrow">│ sidecar A2A server ▼</div>
+        <div class="varrow">│ A2A (NetworkPolicy: solo rojo → azul) ▼</div>
         <div class="node blue" style="width:100%">
           <div class="hdr">● AGENTE AZUL</div>
-          <div class="sub">defensivo · A2A server · sidecar</div>
+          <div class="sub">defensivo · A2A server · sandbox propio</div>
           <ul><li>AgentCard skill <span class="faint">review-pr</span></li><li>revisor LLM con tools</li><li>devuelve APPROVE / BLOCK</li></ul>
         </div>
       </div>
@@ -273,7 +273,7 @@
       (protocolo Agent2Agent): el azul es un <b>A2A server</b> que publica su <b>AgentCard</b>
       (skill <code>review-pr</code>) en <code>/.well-known/agent-card.json</code>; el rojo es un
       <b>A2A client</b> que le manda el diff del PR. En Tekton viven en la <b>misma Task</b>: el azul
-      como <b>sidecar</b> (A2A server en localhost:9999) y el rojo como <b>step</b> que lo consume por
+      como <b>servicio en su propio sandbox</b> (A2A server, sin token ni internet) y el rojo como <b>step</b> que lo consume por
       localhost. El <code>merge-deploy</code> solo corre si la decisión es APPROVE (Tekton <code>when</code>).
       Lo clave es la flecha ámbar de abajo: el único canal que el azul <b>tiene</b> que leer (el diff)
       es el mismo que el rojo <b>controla</b>. Ahí vive el ataque. Repo y clúster propios, nunca terceros.
@@ -295,7 +295,7 @@
         <div class="card red"><h4>Agente rojo · A2A client</h4>
           <p class="muted">Genera los diffs y, como cliente A2A, resuelve la AgentCard
             (<code>A2ACardResolver</code>) y le manda el diff como <code>Message</code>. En Tekton: azul
-            = <strong>sidecar</strong>, rojo = <strong>step</strong>, mismo pod (localhost:9999).</p></div>
+            = <strong>servicio A2A en sandbox</strong>, rojo = <strong>step</strong>, en pods separados.</p></div>
       </div>
       <div class="grid" style="gap:14px">
         <div class="card green"><h4>Modo <code>rules</code> · offline</h4>
@@ -508,11 +508,11 @@
       <div class="term">
         <div class="tt"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="ttl">reproducir el duelo</span></div>
 <pre><span class="c-cmt"># laptop · modo rules (sin red, sin API key)</span>
-cd ../04-ai-agents/red-blue-agents && python run_duel.py
+cd ../04-ai-agents && uv run run-duel
 <span class="c-cmt"># modo llm + A2A real: AGENT_MODE=llm + API key</span>
 
 <span class="c-cmt"># clúster · Tekton (k3s): 8 etapas + supply chain real</span>
-kubectl apply -k ../03-gitops/devsecops-pipeline/   <span class="c-cmt"># sidecar azul + step rojo</span></pre>
+kubectl apply -k ../03-gitops/devsecops-pipeline/   <span class="c-cmt"># azul en sandbox + step rojo</span></pre>
         <p class="muted" style="margin-top:.8em;font-size:12.5px">Ya corrió de punta a punta en
           <strong>OpenShift 4.22</strong>: imagen propia del registry interno, SCC <span class="accent-green">restricted-v2</span>
           asignó <span class="accent-green">runAsUser=1000980000</span> (del rango del namespace, no uid 1000 fijo),
@@ -523,8 +523,8 @@ kubectl apply -k ../03-gitops/devsecops-pipeline/   <span class="c-cmt"># sideca
       <span class="t">46–49 min · Checklist y lab</span>
       Cuatro preguntas que cada quien se lleva para hacerse mañana en su pipeline. Insiste: el lab es público
       y reproducible. En laptop corre en <b>modo rules</b> (sin red, sin API key) o en <b>modo llm + A2A real</b>
-      (con key). En el clúster corre sobre <b>Tekton</b> desde una <b>imagen propia</b> (BuildConfig, no
-      ConfigMap): el azul es sidecar A2A, el rojo step. Credibilidad: <b>ya se ejecutó en OpenShift 4.22 real</b>
+      (con key). En el clúster corre sobre <b>Tekton</b> desde una <b>imagen propia firmada</b> (uv, base fijada por digest, sin código por
+      ConfigMap): el azul es un servicio A2A en sandbox, el rojo un step. Credibilidad: <b>ya se ejecutó en OpenShift 4.22 real</b>
       — la SCC <b>restricted-v2</b> asignó <code>runAsUser=1000980000</code> (del rango del namespace, exactamente
       la diferencia OpenShift vs K8s vanilla), el azul aprobó el PR envenenado (<code>decision=APPROVE</code>,
       score 0.999999 → 0.0007) y se disparó el merge/deploy. Si no te crees los números, córrelos tú. Da la URL

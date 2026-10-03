@@ -19,9 +19,10 @@ spec:
   params:
     - name: pr-diff
       value: pr-02-poisoned.diff
-    # rules (solo stdlib, sin egress, default) | llm (A2A + LLM LOCAL vLLM qwen3).
-    - name: agent-mode
-      value: rules
+    # Agente azul destino: vulnerable (Actos 1-3). Acto 4: el servicio endurecido,
+    # http://blue-reviewer-hardened.devsecops-duel.svc.cluster.local:9999/
+    - name: blue-reviewer-url
+      value: http://blue-reviewer.devsecops-duel.svc.cluster.local:9999/
     # SAST (semgrep + gitleaks) INFORMATIVO por defecto: no bloquea el pipeline,
     # para que la demo del ataque fluya hasta el gate + la admision (la frontera
     # real). Ponlo en "true" para hacerlo bloqueante.

@@ -22,9 +22,9 @@
 #                    con la clave del duelo (Secret duel-cosign-keys). cosign SUBE
 #                    la firma al registry (Zot la guarda como artefacto OCI).
 #                    Registry HTTP -> --allow-insecure-registry. -> Result.
-#   6. gate-blue     EL CORAZON DEL ATAQUE (sin cambios): el agente AZUL (sidecar
-#                    A2A) revisa el PR y decide APPROVE/BLOCK. El PR envenenado lo
-#                    hace APROBAR. -> Result: decision.
+#   6. gate-blue     EL CORAZON DEL ATAQUE: el agente ROJO (step, cliente A2A) envia
+#                    el PR al AZUL (servicio A2A en su sandbox, ../agents/), que decide
+#                    APPROVE/BLOCK. El PR envenenado lo hace APROBAR. -> Result: decision.
 #   7. verify        cosign verifica la firma de la IMAGEN DEL REGISTRY POR DIGEST
 #                    (cosign verify ...@<digest>) con la clave publica. Registry
 #                    HTTP -> --allow-insecure-registry. -> Result: verify-status.
@@ -84,13 +84,18 @@ spec:
       type: string
       description: Nombre del diff a revisar (pr-01-obvious.diff | pr-02-poisoned.diff).
       default: pr-02-poisoned.diff
-    - name: agent-base-image
+    - name: agents-image
       type: string
       description: >-
-        Imagen BASE PUBLICA sobre la que corren los agentes. En k3s vanilla sin
-        registry interno, el codigo se monta por ConfigMap sobre esta base. Debe
-        ser una imagen que el cluster pueda pullear sin pull secret.
-      default: registry.access.redhat.com/ubi9/python-311:9.8
+        Imagen de los agentes (04-ai-agents/Containerfile), construida y firmada por la
+        plataforma. El step del rojo la usa con el entrypoint `red-attacker`.
+      default: registry.labjp.xyz/black-alpaca/devsecops-agents:0.1.0
+    - name: blue-reviewer-url
+      type: string
+      description: >-
+        Agente azul (servidor A2A) al que el rojo envía el PR. Vulnerable por defecto;
+        para el Acto 4: http://blue-reviewer-hardened.devsecops-duel.svc.cluster.local:9999/
+      default: http://blue-reviewer.devsecops-duel.svc.cluster.local:9999/
     - name: sample-app-image
       type: string
       description: >-
@@ -99,10 +104,6 @@ spec:
         por digest, Trivy la escanea desde el registry y Kyverno verifica su firma
         en admision. El registry es HTTP interno -> las herramientas usan --insecure.
       default: zot.registry.svc.cluster.local:5000/devsecops-duel/sample-app:latest
-    - name: agent-mode
-      type: string
-      description: rules (default, solo stdlib, sin egress) | llm (A2A + LLM local vLLM).
-      default: rules
     - name: sast-blocking
       type: string
       description: >-
@@ -715,155 +716,51 @@ spec:
             secret:
               secretName: duel-cosign-keys
 
-    # === ETAPA 6: GATE DEL AGENTE AZUL + merge (SIN CAMBIOS) ================
-    # EL CORAZON DEL ATAQUE. El agente AZUL (sidecar A2A server) revisa el PR; el
-    # ROJO (step A2A client) se lo manda. El PR envenenado hace que el azul apruebe.
-    # El codigo se monta desde el ConfigMap duel-agent-src sobre la imagen base.
+    # === ETAPA 6: GATE DEL AGENTE AZUL + merge ===============================
+    # EL CORAZÓN DEL ATAQUE. El ROJO (este step, cliente A2A) envía el PR al AZUL, que
+    # corre como servicio propio en su sandbox (../agents/). El PR envenenado hace que el
+    # azul apruebe. El step del rojo no tiene token de API ni salida a internet: solo
+    # puede hablar con el azul (NetworkPolicy allow-gate-blue-to-reviewer).
     - name: gate-blue
       runAfter:
         - sign
       params:
         - name: pr-diff
           value: $(params.pr-diff)
-        - name: agent-base-image
-          value: $(params.agent-base-image)
-        - name: agent-mode
-          value: $(params.agent-mode)
+        - name: agents-image
+          value: $(params.agents-image)
+        - name: blue-reviewer-url
+          value: $(params.blue-reviewer-url)
       taskSpec:
         params:
           - name: pr-diff
             type: string
-          - name: agent-base-image
+          - name: agents-image
             type: string
-          - name: agent-mode
+          - name: blue-reviewer-url
             type: string
         results:
           - name: decision
             description: APPROVE o BLOCK emitido por el agente azul.
-        sidecars:
-          - name: blue-reviewer
-            image: $(params.agent-base-image)
-            workingDir: /opt/duel
-            env:
-              - name: AGENT_MODE
-                value: $(params.agent-mode)
-              - name: BLUE_A2A_HOST
-                value: "0.0.0.0"
-              - name: BLUE_A2A_PORT
-                value: "9999"
-              - name: PYTHONPATH
-                value: "/tmp/duel"
-              - name: LLM_PROVIDER
-                valueFrom:
-                  configMapKeyRef:
-                    name: duel-llm-config
-                    key: LLM_PROVIDER
-                    optional: true
-              - name: LLM_MODEL
-                valueFrom:
-                  configMapKeyRef:
-                    name: duel-llm-config
-                    key: LLM_MODEL
-                    optional: true
-              - name: OPENAI_BASE_URL
-                valueFrom:
-                  configMapKeyRef:
-                    name: duel-llm-config
-                    key: OPENAI_BASE_URL
-                    optional: true
-            securityContext:
-              runAsNonRoot: true
-              runAsUser: 1000
-              runAsGroup: 1000
-              allowPrivilegeEscalation: false
-              readOnlyRootFilesystem: false
-              capabilities:
-                drop: ["ALL"]
-              seccompProfile:
-                type: RuntimeDefault
-            volumeMounts:
-              - name: agent-src
-                mountPath: /var/agent-src
-                readOnly: true
-            command:
-              - /bin/sh
-              - -c
-              - |
-                set -e
-                echo "[blue-sidecar] copiando código del agente (ConfigMap) a un dir escribible..."
-                mkdir -p /tmp/duel
-                cp /var/agent-src/*.py /var/agent-src/requirements.txt /tmp/duel/
-                echo "[blue-sidecar] instalando deps (requirements.txt) desde PyPI..."
-                pip install --no-cache-dir --target /tmp/deps -r /tmp/duel/requirements.txt \
-                  >/tmp/pip.log 2>&1 || { echo "[blue-sidecar] pip falló:"; tail -20 /tmp/pip.log; exit 1; }
-                export PYTHONPATH="/tmp/duel:/tmp/deps:${PYTHONPATH:-}"
-                echo "[blue-sidecar] arrancando A2A server..."
-                exec python /tmp/duel/blue_a2a_server.py
-            readinessProbe:
-              httpGet:
-                path: /.well-known/agent-card.json
-                port: 9999
-              initialDelaySeconds: 3
-              periodSeconds: 2
-              failureThreshold: 60
-        stepTemplate:
-          volumeMounts:
-            - name: agent-code
-              mountPath: /opt/duel
-            - name: agent-src
-              mountPath: /var/agent-src
         steps:
-          - name: prepare-agent-code
-            image: $(params.agent-base-image)
-            env:
-              - name: AGENT_MODE
-                value: $(params.agent-mode)
-            securityContext:
-              runAsNonRoot: true
-              runAsUser: 1000
-              runAsGroup: 1000
-              allowPrivilegeEscalation: false
-              capabilities:
-                drop: ["ALL"]
-              seccompProfile:
-                type: RuntimeDefault
-            script: |
-              #!/usr/bin/env bash
-              set -euo pipefail
-              echo "[prep] Copiando codigo del agente (ConfigMap) a /opt/duel (escribible)..."
-              cp /var/agent-src/*.py /var/agent-src/requirements.txt /opt/duel/
-              ls -l /opt/duel
-              echo "[prep] instalando deps (requirements.txt) en /opt/duel/.deps..."
-              pip install --no-cache-dir --target /opt/duel/.deps -r /opt/duel/requirements.txt \
-                || echo "[prep] AVISO: pip fallo (sin egress a PyPI?). El rojo usara transporte directo."
           - name: red-open-pr
-            image: $(params.agent-base-image)
-            workingDir: /opt/duel
-            env:
-              - name: AGENT_MODE
-                value: $(params.agent-mode)
-              - name: PYTHONPATH
-                value: "/opt/duel:/opt/duel/.deps"
+            image: $(params.agents-image)
             securityContext:
               runAsNonRoot: true
-              runAsUser: 1000
-              runAsGroup: 1000
+              runAsUser: 1001
+              runAsGroup: 0
               allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
               capabilities:
                 drop: ["ALL"]
               seccompProfile:
                 type: RuntimeDefault
+            # stdout = solo la decisión (APPROVE|BLOCK); el acta va por stderr al log.
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
-              echo "[rojo] Generando los PRs del duelo (diffs/)..."
-              python red_agent.py >/dev/null
-
-              echo "[rojo] Abriendo PR $(params.pr-diff) y mandandoselo al AZUL por A2A..."
-              decision="$(python review_pr.py "$(params.pr-diff)" --a2a http://127.0.0.1:9999)"
-              echo "[rojo] el AZUL (A2A server) respondio: ${decision}"
-
-              printf '%s' "${decision}" | tr -d '\n' > "$(results.decision.path)"
+              red-attacker submit --blue-url "$(params.blue-reviewer-url)" \
+                --pr "$(params.pr-diff)" > "$(results.decision.path)"
           - name: simulate-merge
             image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
             securityContext:
@@ -879,17 +776,9 @@ spec:
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
-              DEC="$(cat "$(results.decision.path)")"
-              echo "[merge] decision del azul = ${DEC}"
-              echo "[merge] SIMULACION: aqui se mergearia el PR. El duel-runner NO"
-              echo "[merge] tiene RBAC de merge a proposito (frontera human-in-the-loop"
-              echo "[merge] del Acto 4). El DEPLOY GitOps real lo hace la etapa 4."
-        volumes:
-          - name: agent-code
-            emptyDir: {}
-          - name: agent-src
-            configMap:
-              name: duel-agent-src
+              echo "[merge] decisión del azul = $(cat "$(results.decision.path)")"
+              echo "[merge] SIMULACIÓN: aquí se fusionaría el PR. El duel-runner NO tiene"
+              echo "[merge] RBAC de merge a propósito (frontera human-in-the-loop)."
 
     # === ETAPA 7: VERIFY (cosign, verificacion de la firma) =================
     # cosign verifica la firma de la imagen (por digest en Zot) con la clave PUBLICA (cadena

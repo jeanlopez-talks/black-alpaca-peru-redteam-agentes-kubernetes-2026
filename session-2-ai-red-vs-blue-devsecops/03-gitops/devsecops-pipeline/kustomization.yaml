@@ -3,13 +3,14 @@
 #
 #   base/        ServiceAccount del runner, NetworkPolicies, config del LLM
 #                (el namespace lo crea la Application de admission-policies, con Pod Security)
-#   tekton/      Pipeline + PipelineRun del PR envenenado
+#   agents/      agente azul (vulnerable y endurecido) como servicio A2A en sandbox
+#   tekton/      Pipeline + PipelineRun del PR envenenado (el rojo es un step)
 #   sample-app/  la app objetivo (fuente de la imagen + manifiestos que despliega Argo CD)
 #   fixtures/    entrada realista para la etapa SAST
 #
 # Fuera de este kustomize: las policies de Kyverno (../admission-policies/,
-# Application propia) y el codigo de los agentes (ConfigMap duel-agent-src, ver
-# README.md). La clave cosign llega por ExternalSecret desde OpenBao.
+# Application propia). El código de los agentes va en su imagen (../../04-ai-agents/)
+# y la clave cosign llega por ExternalSecret desde OpenBao.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -29,6 +30,12 @@ resources:
   - base/externalsecret-duel-cosign-keys.yaml
   - base/networkpolicies-egress.yaml
   - base/llm-config.yaml
+  - agents/serviceaccount-blue-reviewer.yaml
+  - agents/deployment-blue-reviewer.yaml
+  - agents/service-blue-reviewer.yaml
+  - agents/deployment-blue-reviewer-hardened.yaml
+  - agents/service-blue-reviewer-hardened.yaml
+  - agents/networkpolicy-blue-reviewer.yaml
   - tekton/pipeline-devsecops.yaml
   - tekton/pipelinerun-poisoned-pr.yaml
 
