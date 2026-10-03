@@ -1,0 +1,9 @@
+# Kustomize de la APP DE EJEMPLO. Este es el directorio que Argo CD sincroniza
+# (ver application-sample-app.yaml): la Application apunta a ..
+# Separado del kustomization raiz del duelo a proposito — el pipeline/infra del
+# duelo y la carga desplegada son cosas distintas.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml

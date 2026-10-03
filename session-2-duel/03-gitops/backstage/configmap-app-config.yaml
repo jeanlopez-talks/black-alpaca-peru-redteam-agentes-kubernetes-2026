@@ -1,0 +1,111 @@
+# app-config de Backstage por ConfigMap.
+#
+# QUE HACE: configura el portal de developer (IDP) para la demo del duelo.
+# Habilita la integracion con:
+#   - Argo CD  (plugin backstage-plugin-argo-cd / roadiehq): muestra las
+#     Application del cluster (ns `argocd`) y su estado de sync/health en la
+#     pestana de cada componente del catalogo.
+#   - Tekton   (plugin backstage-plugin-tekton): muestra los PipelineRun /
+#     TaskRun del namespace openclaw-duel (el pipeline DevSecOps del duelo).
+#   - Kubernetes (plugin core): descubre los recursos del componente por label.
+#
+# IMPORTANTE SOBRE LA IMAGEN (ver README.md): la imagen oficial de demo de
+# Backstage (ghcr.io/backstage/backstage) trae el backend/frontend base pero NO
+# los plugins de Argo CD/Tekton compilados. Para que esos plugins aparezcan hay
+# que un BUILD CUSTOM de Backstage que los incluya en package.json (paso aparte,
+# documentado en README.md -> "Build custom"). Este app-config es la
+# configuracion que ese build (o la imagen base, para el catalogo/k8s) consume:
+# se monta como /app/app-config.production.yaml. Asi el manifiesto queda LISTO y
+# solo cambia la `image` del Deployment cuando exista el build.
+#
+# SIN SECRETOS: los tokens (Argo CD, kubeconfig) se referencian por variable de
+# entorno (${ARGOCD_AUTH_TOKEN}, ${K8S_SA_TOKEN}) que vienen de un Secret de K8s
+# (ver secret-integrations.yaml, placeholders), NUNCA hardcodeados aqui.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backstage-app-config
+  namespace: backstage
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: backstage
+data:
+  app-config.production.yaml: |
+    app:
+      title: Black Alpaca — DevSecOps IDP (duelo rojo vs azul)
+      # AJUSTAR: URL publica del portal (ver httproute.yaml / service LoadBalancer).
+      baseUrl: http://10.0.10.66
+
+    organization:
+      name: labjp-homelab
+
+    backend:
+      baseUrl: http://10.0.10.66
+      listen:
+        port: 7007
+        host: 0.0.0.0
+      # CORS abierto solo al propio baseUrl (demo de lab).
+      cors:
+        origin: http://10.0.10.66
+        methods: [GET, POST, PUT, DELETE]
+        credentials: true
+      # Base de datos: SQLite en memoria para la demo (sin PVC). Para persistir
+      # el catalogo entre reinicios, cambiar a postgres (fuera del alcance de la demo).
+      database:
+        client: better-sqlite3
+        connection: ':memory:'
+      auth:
+        # Clave de firma de sesiones: viene de un Secret (NO hardcodear).
+        keys:
+          - secret: ${BACKEND_SECRET}
+
+    # Autenticacion: guest para la demo (sin IdP). En real, OIDC contra Keycloak.
+    auth:
+      environment: development
+      providers:
+        guest: {}
+
+    # --- Integracion KUBERNETES (plugin core) -------------------------------
+    # Descubre los recursos del cluster para mostrarlos por componente. Usa un
+    # ServiceAccount de solo lectura (token por Secret, placeholder).
+    kubernetes:
+      serviceLocatorMethod:
+        type: multiTenant
+      clusterLocatorMethods:
+        - type: config
+          clusters:
+            - name: k3s-appserver02
+              # AJUSTAR: el API server interno del cluster.
+              url: https://kubernetes.default.svc
+              authProvider: serviceAccount
+              skipTLSVerify: true
+              serviceAccountToken: ${K8S_SA_TOKEN}
+
+    # --- Integracion ARGO CD (plugin roadiehq/backstage-plugin-argo-cd) ------
+    # Apunta a la instancia de Argo CD del cluster (ns `argocd`). Lee las
+    # Application (duel, posturas, backstage, el agente) y su estado.
+    argocd:
+      username: ${ARGOCD_USER}
+      password: ${ARGOCD_PASSWORD}
+      appLocatorMethods:
+        - type: config
+          instances:
+            - name: argocd-appserver02
+              # AJUSTAR: URL del API/UI de Argo CD del cluster (ns argocd).
+              url: https://argocd-server.argocd.svc.cluster.local
+              token: ${ARGOCD_AUTH_TOKEN}
+
+    # --- Integracion TEKTON (plugin backstage-plugin-tekton) -----------------
+    # El plugin Tekton lee PipelineRun/TaskRun via el plugin kubernetes (arriba).
+    # No requiere config propia aqui salvo las annotations en la entidad (ver
+    # catalog-info.yaml): tekton.dev/cicd y backstage.io/kubernetes-id.
+
+    # --- CATALOGO ------------------------------------------------------------
+    # Carga la entidad del componente "duel-devsecops" (y el agente) desde el
+    # propio ConfigMap montado (catalog-info.yaml). Patron "static location".
+    catalog:
+      locations:
+        - type: file
+          target: /app/catalog/catalog-info.yaml
+          rules:
+            - allow: [Component, System, API, Resource, Location]

@@ -1,0 +1,11 @@
+# Namespace de Backstage (portal de developer / IDP).
+# Separado del duelo (openclaw-duel) y de las posturas (openclaw-*): Backstage es
+# la CAPA DE INTERACCION HUMANA sobre el flujo DevSecOps, no parte del radio de
+# explosion del lab. Lo sincroniza Argo CD (ver application-backstage.yaml).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backstage
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: backstage

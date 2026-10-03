@@ -1,0 +1,1080 @@
+# Pipeline Tekton del duelo — FLUJO DevSecOps COMPLETO con SUPPLY CHAIN + ADMISSION.
+# VERSION KUBERNETES VANILLA (k3s v1.36). Tekton Pipelines y Argo CD (ns `argocd`)
+# YA estan instalados. Kyverno se instala aparte (ver kyverno/).
+#
+# ======================================================================
+# ORDEN DevSecOps (encadenado con runAfter + when):
+#
+#   1. sast          escaneo de CODIGO del PR (shift-left, ANTES del build):
+#                    semgrep (SAST) + gitleaks (secret scanning). INFORMATIVO.
+#   2. build         kaniko construye la imagen de la app y la EMPUJA (push REAL)
+#                    al REGISTRY INTERNO Zot (zot.registry.svc:5000, HTTP inseguro
+#                    -> --insecure --skip-tls-verify). Deja ademas el tar y el
+#                    digest-file en el workspace. -> Result: image-ref.
+#   3. sbom          Syft genera el SBOM de la imagen (lee el tar OCI, fiable) en
+#                    formato CycloneDX + SPDX -> artefactos en el workspace.
+#   4. trivy-scan    Trivy REAL sobre la IMAGEN DEL REGISTRY (trivy image --insecure
+#                    zot.registry.svc:5000/.../sample-app:latest); politica
+#                    HIGH/CRITICAL. Requiere egress (DB de vulnerabilidades).
+#                    INFORMATIVO (fallback documentado si la DB no baja). -> Result.
+#   5. sign          cosign firma la IMAGEN DEL REGISTRY POR DIGEST
+#                    (cosign sign zot.registry.svc:5000/.../sample-app@<digest>)
+#                    con la clave del duelo (Secret duel-cosign-keys). cosign SUBE
+#                    la firma al registry (Zot la guarda como artefacto OCI).
+#                    Registry HTTP -> --allow-insecure-registry. -> Result.
+#   6. gate-blue     EL CORAZON DEL ATAQUE (sin cambios): el agente AZUL (sidecar
+#                    A2A) revisa el PR y decide APPROVE/BLOCK. El PR envenenado lo
+#                    hace APROBAR. -> Result: decision.
+#   7. verify        cosign verifica la firma de la IMAGEN DEL REGISTRY POR DIGEST
+#                    (cosign verify ...@<digest>) con la clave publica. Registry
+#                    HTTP -> --allow-insecure-registry. -> Result: verify-status.
+#   8. deploy-gitops SOLO si decision==APPROVE Y verify-status==OK: promueve via
+#                    Argo CD. AQUI entra la ADMISION: Kyverno rechaza el Deployment
+#                    si falta la aprobacion-humana (defensa en capas).
+#
+# ======================================================================
+# DEFENSA EN CAPAS (narrativa de la charla):
+#   - La CADENA DE SUPPLY CHAIN (sast/sbom/trivy/sign/verify) es ahora REAL contra
+#     el registry: se EMPUJA, FIRMA, ESCANEA y VERIFICA la imagen por digest. Esa
+#     cadena protege la imagen: procedencia, vulnerabilidades, firma. PERO el PR
+#     envenenado modifica CONFIG (config/deploy-notes.md), NO el codigo de la
+#     imagen -> la imagen firma y verifica CORRECTAMENTE. La firma es VALIDA y NO
+#     detecta el ataque.
+#   - La policy Kyverno verifyImages (duel-verify-images) esta ahora en ENFORCE y
+#     verifica de verdad la firma de las imagenes del registry en admision. PERO
+#     TAMPOCO atrapa este ataque: la imagen ES legitima (esta firmada), asi que
+#     verifyImages la ADMITE. Es defensa en capas REAL, pero deliberadamente NO es
+#     la capa que frena este ataque concreto.
+#   - Lo que ATRAPA el ataque es la OTRA policy de ADMISSION (duel-require-human-
+#     approval): exige una anotacion de aprobacion-humana que el agente NO puede
+#     poner. Aunque el gate del azul apruebe y la imagen verifique, Kyverno rechaza.
+#   => Firma/verifyImages: necesarias y REALES, NO suficientes aqui. La admision
+#      por aprobacion-humana es la capa que si frena.
+#
+# ======================================================================
+# QUE ES REAL vs SIMULADO (resumen; detalle en README.md):
+#   - supply chain REAL contra el REGISTRY INTERNO Zot (zot.registry.svc:5000):
+#     build EMPUJA la imagen; cosign FIRMA y VERIFICA por digest (la firma vive en
+#     el registry como artefacto OCI); Trivy ESCANEA la imagen del registry.
+#     Registry HTTP interno sin auth -> flags insecure (ver cada etapa). Trivy
+#     necesita egress para la DB; si no baja, fallback documentado (SKIPPED).
+#   - sbom: Syft lee el TAR OCI local (fiable, sin red) -> no depende del registry.
+#   - gate-blue: A2A REAL (a2a-sdk 1.2.1). merge SIMULADO (sin RBAC de merge).
+#   - deploy-gitops: manifiesto REAL; el kubectl apply lo hace el operador/SA.
+#   - Admission (Kyverno): REAL en admision. Ahora verifyImages esta en ENFORCE
+#     (hay registry con imagenes firmadas que verificar), pero NO es la capa que
+#     frena este ataque (ver DEFENSA EN CAPAS). Ver kyverno/.
+#
+# POR QUE herramientas como imagenes en steps (no operators): en k3s vanilla
+# instalamos lo minimo. Kyverno es el UNICO componente que se instala como
+# webhook (necesario para admision). El resto (semgrep, gitleaks, syft, trivy,
+# cosign) son imagenes publicas que corren como step y dejan artefactos en el
+# workspace compartido / empujan al registry interno. El registry Zot SI esta
+# desplegado dentro del cluster (zot.registry.svc). Sin acceso a los nodos
+# (Flatcar inmutable) no cabe otra para el tooling.
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: duel-devsecops
+  namespace: openclaw-duel
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: duel
+spec:
+  params:
+    - name: pr-diff
+      type: string
+      description: Nombre del diff a revisar (pr-01-obvious.diff | pr-02-poisoned.diff).
+      default: pr-02-poisoned.diff
+    - name: agent-base-image
+      type: string
+      description: >-
+        Imagen BASE PUBLICA sobre la que corren los agentes. En k3s vanilla sin
+        registry interno, el codigo se monta por ConfigMap sobre esta base. Debe
+        ser una imagen que el cluster pueda pullear sin pull secret.
+      default: registry.access.redhat.com/ubi9/python-311
+    - name: sample-app-image
+      type: string
+      description: >-
+        Referencia de la imagen de la app de ejemplo en el REGISTRY INTERNO (Zot).
+        kaniko la construye y la EMPUJA aqui (push real). cosign firma la imagen
+        por digest, Trivy la escanea desde el registry y Kyverno verifica su firma
+        en admision. El registry es HTTP interno -> las herramientas usan --insecure.
+      default: zot.registry.svc.cluster.local:5000/openclaw-duel/sample-app:latest
+    - name: agent-mode
+      type: string
+      description: rules (default, solo stdlib, sin egress) | llm (A2A + LLM local vLLM).
+      default: rules
+    - name: sast-blocking
+      type: string
+      description: >-
+        "false" (default): sast INFORMATIVO (no bloquea el pipeline). "true":
+        sast BLOQUEANTE (el pipeline falla si semgrep/gitleaks hallan algo). Se
+        deja informativo por defecto para que la demo del ataque fluya: la
+        frontera real es el gate + la admision, no el SAST.
+      default: "false"
+    - name: trivy-severity
+      type: string
+      description: Severidades que Trivy reporta/cuenta como hallazgo (politica).
+      default: "HIGH,CRITICAL"
+  workspaces:
+    - name: shared
+      description: Workspace compartido (fuente, imagen tar, SBOM, firmas, reportes).
+  results:
+    - name: blue-decision
+      description: APPROVE o BLOCK emitido por el agente azul (etapa gate-blue).
+      value: $(tasks.gate-blue.results.decision)
+    - name: scan-status
+      description: OK o FINDINGS del escaneo Trivy (etapa trivy-scan).
+      value: $(tasks.trivy-scan.results.status)
+    - name: verify-status
+      description: OK o FAIL de la verificacion de firma cosign (etapa verify).
+      value: $(tasks.verify.results.verify-status)
+  tasks:
+    # === ETAPA 1: SAST (shift-left, ANTES del build) ========================
+    # semgrep (SAST) + gitleaks (secret scanning) sobre la fuente del PR. Es
+    # "shift-left": encontrar problemas en el CODIGO antes de construir nada.
+    # INFORMATIVO por defecto (sast-blocking=false); ponlo en true para bloquear.
+    # Escanea la fuente de la app (ConfigMap sample-app-src) + el config del PR
+    # (ConfigMap duel-sast-input, con el config/deploy-notes.md envenenado), para
+    # que el escaneo tenga material realista. Las imagenes publicas de semgrep y
+    # gitleaks se pullean con egress (permitido para esta task).
+    - name: sast
+      params:
+        - name: sast-blocking
+          value: $(params.sast-blocking)
+      workspaces:
+        - name: shared
+          workspace: shared
+      taskSpec:
+        params:
+          - name: sast-blocking
+            type: string
+        results:
+          - name: status
+            description: OK (sin hallazgos) | FINDINGS (semgrep/gitleaks dispararon).
+        workspaces:
+          - name: shared
+        stepTemplate:
+          volumeMounts:
+            - name: sast-src
+              mountPath: /var/sast-src
+              readOnly: true
+        steps:
+          # --- materializar la fuente a escanear en el workspace ---------------
+          - name: materialize-sast-source
+            image: registry.access.redhat.com/ubi9/ubi-minimal
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              SRC="$(workspaces.shared.path)/sast-src"
+              rm -rf "$SRC" 2>/dev/null || true
+              mkdir -p "$SRC"
+              # Fuente de la app + el config del PR (incluye el deploy-notes envenenado).
+              cp -r /var/sast-src/* "$SRC/" 2>/dev/null || true
+              echo "[sast] fuente a escanear:"
+              ls -lR "$SRC"
+          # --- semgrep (SAST): reglas de seguridad + auditoria -----------------
+          - name: semgrep
+            image: returntocorp/semgrep:1.90.0
+            workingDir: $(workspaces.shared.path)/sast-src
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            script: |
+              #!/usr/bin/env bash
+              set -uo pipefail
+              REPORT="$(workspaces.shared.path)/sast-semgrep.txt"
+              echo "=== semgrep (SAST) ===" > "${REPORT}"
+              # Rulesets publicos de semgrep (requieren egress al registry de reglas).
+              # --error haria exit!=0 si hay hallazgos: lo controlamos nosotros abajo.
+              semgrep scan --config p/ci --config p/secrets \
+                --metrics=off --error --quiet . 2>&1 | tee -a "${REPORT}"
+              rc=$?
+              echo "[sast] semgrep exit=${rc}" | tee -a "${REPORT}"
+              # Dejamos un marcador para el step final (no fallamos aun aqui).
+              echo "${rc}" > "$(workspaces.shared.path)/.semgrep-rc"
+          # --- gitleaks: secret scanning --------------------------------------
+          - name: gitleaks
+            image: zricethezav/gitleaks:v8.21.2
+            workingDir: $(workspaces.shared.path)/sast-src
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            script: |
+              #!/usr/bin/env sh
+              set -u
+              REPORT="$(workspaces.shared.path)/sast-gitleaks.txt"
+              echo "=== gitleaks (secret scanning) ===" > "${REPORT}"
+              # 'detect --no-git': escanea el filesystem (no hay repo .git aqui).
+              gitleaks detect --no-git --source . --report-format json \
+                --report-path "$(workspaces.shared.path)/gitleaks-report.json" \
+                --verbose 2>&1 | tee -a "${REPORT}"
+              rc=$?
+              echo "[sast] gitleaks exit=${rc} (0=sin secretos, 1=secretos hallados)" | tee -a "${REPORT}"
+              echo "${rc}" > "$(workspaces.shared.path)/.gitleaks-rc"
+          # --- veredicto SAST: informativo o bloqueante ------------------------
+          - name: sast-verdict
+            image: registry.access.redhat.com/ubi9/ubi-minimal
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              SRC="$(workspaces.shared.path)"
+              sg="$(cat "${SRC}/.semgrep-rc" 2>/dev/null || echo 0)"
+              gl="$(cat "${SRC}/.gitleaks-rc" 2>/dev/null || echo 0)"
+              echo "[sast] semgrep rc=${sg} gitleaks rc=${gl}"
+              if [ "${sg}" != "0" ] || [ "${gl}" != "0" ]; then
+                echo "FINDINGS" > "$(results.status.path)"
+                echo "[sast] HALLAZGOS detectados (ver sast-semgrep.txt / sast-gitleaks.txt)."
+                if [ "$(params.sast-blocking)" = "true" ]; then
+                  echo "[sast] sast-blocking=true -> el pipeline FALLA aqui."
+                  exit 1
+                fi
+                echo "[sast] sast-blocking=false -> INFORMATIVO, el pipeline continua."
+              else
+                echo "OK" > "$(results.status.path)"
+                echo "[sast] sin hallazgos."
+              fi
+        volumes:
+          - name: sast-src
+            projected:
+              sources:
+                - configMap:
+                    name: sample-app-src
+                - configMap:
+                    name: duel-sast-input
+
+    # === ETAPA 2: BUILD =====================================================
+    # kaniko construye la imagen de la app y la EMPUJA (push REAL) al REGISTRY
+    # INTERNO Zot (zot.registry.svc:5000). Como Zot es HTTP interno sin auth, se
+    # usan --insecure --skip-tls-verify. Ademas deja el tar (--tar-path) y el
+    # digest (--digest-file) en el workspace para las etapas sbom/trivy/sign/verify.
+    - name: build
+      runAfter:
+        - sast
+      params:
+        - name: sample-app-image
+          value: $(params.sample-app-image)
+      workspaces:
+        - name: shared
+          workspace: shared
+      taskSpec:
+        params:
+          - name: sample-app-image
+            type: string
+        results:
+          - name: image-ref
+            description: Referencia de la imagen construida y EMPUJADA al registry Zot.
+        workspaces:
+          - name: shared
+        steps:
+          - name: materialize-source
+            image: registry.access.redhat.com/ubi9/ubi-minimal
+            volumeMounts:
+              - name: sample-src
+                mountPath: /var/sample-src
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              echo "[build] Preparando fuente de la app de ejemplo en el workspace..."
+              ctx="$(workspaces.shared.path)/ctx-sample-app"
+              rm -rf "$ctx" 2>/dev/null || true
+              mkdir -p "$ctx"
+              cp /var/sample-src/Containerfile "$ctx/"
+              cp /var/sample-src/index.html    "$ctx/"
+              ls -l "$ctx"
+          - name: kaniko-build-push
+            image: gcr.io/kaniko-project/executor:v1.23.2
+            # ┌─ EXCEPCIÓN DE COMPLIANCE DOCUMENTADA (root justificado) ──────────┐
+            # │ Control violado: runAsNonRoot (este step corre como uid 0).        │
+            # │ Justificación: kaniko DESEMPAQUETA el rootfs de la imagen base en  │
+            # │   `/` (crea /afs, /proc...), operación que requiere uid 0. Es la   │
+            # │   naturaleza de un builder de imágenes, no una mala configuración. │
+            # │ Mitigaciones que SÍ se mantienen (defensa en profundidad):         │
+            # │   - ACOTADO a esta única task (build); el resto del pipeline y el  │
+            # │     gate del agente corren como uid 1000 no-root.                  │
+            # │   - allowPrivilegeEscalation:false, drop ALL + solo caps mínimas   │
+            # │     (CHOWN/DAC_OVERRIDE/FOWNER/SETUID/SETGID) — least privilege.   │
+            # │   - Sin acceso a la API de k8s (SA sin token), egress solo 443.    │
+            # │   - kaniko construye en userspace (no usa el daemon de Docker).    │
+            # │ Alternativa evaluada: rootless (userns) — no fiable en este k3s.   │
+            # │ Esta excepción es auditable: una policy Kyverno podría permitir    │
+            # │   uid 0 SOLO para pods con label build-tool=kaniko.                │
+            # └────────────────────────────────────────────────────────────────────┘
+            securityContext:
+              runAsUser: 0
+              runAsNonRoot: false
+              allowPrivilegeEscalation: false
+              # Compliance: drop ALL y añadir SOLO las capabilities mínimas que
+              # kaniko necesita para desempaquetar/chown el rootfs (principle of
+              # least privilege, aunque corra como root). Sin CHOWN daba
+              # "chown /kaniko/Dockerfile: operation not permitted".
+              capabilities:
+                drop: ["ALL"]
+                # CHOWN/DAC_OVERRIDE/FOWNER: copiar/chown archivos del rootfs.
+                # SETUID/SETGID: binarios setuid de la imagen base.
+                # SETFCAP: restaurar file-capabilities de binarios como newgidmap
+                #   (sin ella: "lsetxattr security.capability ... not permitted").
+                add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID", "SETFCAP"]
+              seccompProfile:
+                type: RuntimeDefault
+            command:
+              - /kaniko/executor
+            args:
+              - --context=dir://$(workspaces.shared.path)/ctx-sample-app
+              - --dockerfile=$(workspaces.shared.path)/ctx-sample-app/Containerfile
+              - --destination=$(params.sample-app-image)
+              # PUSH REAL al registry interno Zot (ya no --no-push). Zot es HTTP
+              # interno -> --insecure (push) y --insecure-pull (si la base viniera
+              # del mismo registry; aquí la base es registry.redhat.com, HTTPS).
+              - --insecure
+              - --skip-tls-verify
+              # Además deja el tar en el workspace: Syft/Trivy/cosign pueden usar
+              # tanto el tar como la imagen del registry (doble vía, robusto).
+              - --tar-path=$(workspaces.shared.path)/sample-app-image.tar
+              - --digest-file=$(workspaces.shared.path)/image-digest.txt
+              - --verbosity=info
+          - name: record-image-ref
+            image: registry.access.redhat.com/ubi9/ubi-minimal
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              IMG="$(params.sample-app-image)"
+              printf '%s' "${IMG}" | tr -d '\n' > "$(results.image-ref.path)"
+              echo "[build] OK: imagen construida y EMPUJADA al registry Zot tag=${IMG}"
+              echo "[build] digest (kaniko --digest-file):"
+              cat "$(workspaces.shared.path)/image-digest.txt" || true
+              echo
+              ls -lh "$(workspaces.shared.path)/sample-app-image.tar" || true
+              # TMPDIR para Syft (etapa sbom): la imagen de Syft es distroless (sin
+              # shell para mkdir), así que lo creamos aquí. Este step corre como uid
+              # 1000 y Syft TAMBIÉN corre como uid 1000, así que el dir queda
+              # propiedad de 1000 y escribible por su dueño — SIN chmod 0777
+              # (world-writable es una mala práctica de seguridad que Trivy/kube-linter
+              # marcarían; el propio pipeline no debe violar lo que audita).
+              mkdir -p "$(workspaces.shared.path)/.syft-tmp"
+        volumes:
+          - name: sample-src
+            configMap:
+              name: sample-app-src
+
+    # === ETAPA 3: SBOM (Syft) ===============================================
+    # Syft genera el SBOM de la imagen construida (lee el TAR OCI del workspace)
+    # en CycloneDX (JSON) y SPDX (JSON). Artefactos del supply chain: inventario
+    # de componentes para auditoria/attestation.
+    #
+    # DECISION: aunque ya hay registry (Zot), seguimos leyendo el TAR local
+    # (docker-archive:) y NO la imagen del registry. Por que: el tar es el MISMO
+    # bit-a-bit que se empujo (kaniko lo deja en la misma etapa build), no necesita
+    # red ni flags insecure, y es el analisis mas FIABLE y reproducible (sin
+    # depender de que el pull del registry HTTP responda). Es el mismo contenido
+    # firmado por digest, asi que el SBOM describe la imagen que se firma/verifica.
+    # Syft NO necesita egress (analiza el tar local); solo pull de su imagen publica.
+    - name: sbom
+      runAfter:
+        - build
+      workspaces:
+        - name: shared
+          workspace: shared
+      taskSpec:
+        results:
+          - name: sbom-status
+            description: OK | SKIPPED (si el tar no existe).
+        workspaces:
+          - name: shared
+        steps:
+          # La imagen anchore/syft es DISTROLESS (sin shell): su entrypoint es el
+          # binario syft. Por eso NO usamos `script:` sino command/args. Syft
+          # autodetecta el formato del tar (oci-archive/docker-archive) sin prefijo
+          # y escribe cada formato a un fichero con la sintaxis -o <formato>=<path>.
+          # El tar siempre existe (build es dependencia dura).
+          - name: syft-sbom
+            image: anchore/syft:v1.18.1
+            workingDir: $(workspaces.shared.path)
+            # Syft/stereoscope necesita un TMPDIR escribible por uid 1000 para
+            # desempaquetar el tar (si no: "mkdir /tmp/stereoscope-...: permission
+            # denied"). Lo apuntamos a un dir del workspace (nfs-writable, 0770 +
+            # fsGroup 1000; escribible por el grupo, NO world-writable).
+            env:
+              - name: TMPDIR
+                value: $(workspaces.shared.path)/.syft-tmp
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            args:
+              # El tar de kaniko está en formato docker-archive: hay que indicarlo
+              # con el prefijo de esquema, si no Syft intenta leerlo como directorio
+              # / imagen de registry y falla (necesita docker/containerd, que no hay).
+              - docker-archive:$(workspaces.shared.path)/sample-app-image.tar
+              - -o
+              - cyclonedx-json=$(workspaces.shared.path)/sbom.cyclonedx.json
+              - -o
+              - spdx-json=$(workspaces.shared.path)/sbom.spdx.json
+          # STEP record: deja constancia y fija el Result (ubi-minimal, con shell).
+          - name: record-sbom
+            image: registry.access.redhat.com/ubi9/ubi-minimal
+            workingDir: $(workspaces.shared.path)
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              echo "[sbom] SBOM generado por Syft (CycloneDX + SPDX):"
+              ls -lh "$(workspaces.shared.path)"/sbom.*.json
+              echo "OK" > "$(results.sbom-status.path)"
+
+    # === ETAPA 4: TRIVY-SCAN (Trivy REAL) ===================================
+    # Trivy escanea la IMAGEN DEL REGISTRY Zot (trivy image --insecure
+    # zot.registry.svc:5000/.../sample-app:latest): Trivy hace PULL de la imagen
+    # empujada en la etapa build y la analiza (vuln). El registry es HTTP interno
+    # -> --insecure. Ademas escanea el filesystem del contexto de build
+    # (secret/misconfig). Politica de severidad (trivy-severity).
+    # Necesita egress para bajar la DB de vulnerabilidades; si falla (sin egress),
+    # fallback documentado: reporta el error y marcas status=SKIPPED (no rompe la
+    # demo). INFORMATIVO: no bloquea el gate (la frontera real es el gate + admision).
+    - name: trivy-scan
+      runAfter:
+        - sbom
+      params:
+        - name: trivy-severity
+          value: $(params.trivy-severity)
+        - name: sample-app-image
+          value: $(params.sample-app-image)
+      workspaces:
+        - name: shared
+          workspace: shared
+      taskSpec:
+        params:
+          - name: trivy-severity
+            type: string
+          - name: sample-app-image
+            type: string
+        results:
+          - name: status
+            description: OK (sin vulns de la severidad) | FINDINGS | SKIPPED (sin DB).
+        workspaces:
+          - name: shared
+        steps:
+          - name: trivy
+            image: aquasec/trivy:0.58.1
+            workingDir: $(workspaces.shared.path)
+            env:
+              # Cache de la DB dentro del workspace (escribible por uid 1000).
+              - name: TRIVY_CACHE_DIR
+                value: $(workspaces.shared.path)/.trivy-cache
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            script: |
+              #!/usr/bin/env sh
+              set -u
+              REPORT="$(workspaces.shared.path)/trivy-report.txt"
+              echo "=== Trivy (escaneo REAL) sev=$(params.trivy-severity) ===" > "${REPORT}"
+              CTX="$(workspaces.shared.path)/ctx-sample-app"
+              IMG="$(params.sample-app-image)"
+
+              # Escaneo de filesystem del contexto de build (secret/misconfig).
+              trivy fs --scanners vuln,secret,misconfig \
+                --severity "$(params.trivy-severity)" --no-progress \
+                --exit-code 1 "${CTX}" 2>&1 | tee -a "${REPORT}"
+              fs_rc=$?
+
+              # Escaneo de la IMAGEN DEL REGISTRY Zot (pull desde el registry HTTP
+              # interno -> --insecure). Es la imagen REAL empujada en build.
+              echo "[trivy] escaneando imagen del registry: ${IMG}" | tee -a "${REPORT}"
+              trivy image --insecure "${IMG}" --scanners vuln \
+                --severity "$(params.trivy-severity)" --no-progress \
+                --exit-code 1 2>&1 | tee -a "${REPORT}" || true
+
+              echo "[trivy] ---- reporte ----"
+              cat "${REPORT}"
+
+              # FALLBACK documentado: si Trivy no pudo bajar la DB (sin egress), su
+              # salida lo dice y el exit-code es !=0 por error, no por hallazgo. Lo
+              # distinguimos buscando el texto de error de DB en el reporte.
+              if grep -qiE "failed to download|unable to.*db|could not reach" "${REPORT}"; then
+                echo "[trivy] AVISO: no se pudo bajar la DB (sin egress?). FALLBACK -> SKIPPED."
+                echo "SKIPPED" > "$(results.status.path)"
+              elif [ "${fs_rc}" -ne 0 ]; then
+                echo "[trivy] Vulnerabilidades de severidad $(params.trivy-severity) detectadas."
+                echo "FINDINGS" > "$(results.status.path)"
+              else
+                echo "[trivy] Sin vulnerabilidades de la severidad fijada."
+                echo "OK" > "$(results.status.path)"
+              fi
+              echo "[trivy] NOTA: INFORMATIVO; no bloquea el gate (frontera real = gate + admision)."
+
+    # === ETAPA 5: SIGN (cosign, firma del supply chain) =====================
+    # cosign firma la IMAGEN DEL REGISTRY Zot POR DIGEST con la CLAVE del duelo
+    # (Secret duel-cosign-keys). Ahora SI hay registry con la imagen empujada
+    # (etapa build) -> firma REAL de imagen (cosign sign), no del blob del tar.
+    # cosign SUBE la firma al registry (Zot la almacena como artefacto OCI,
+    # .sig junto a la imagen). Como Zot es HTTP interno sin auth:
+    # --allow-insecure-registry. --tlog-upload=false => offline (sin Rekor).
+    #
+    # COMPONER LA REF POR DIGEST: kaniko dejo el digest en image-digest.txt (algo
+    # como "sha256:abcd..."). La ref a firmar es el REPO (sin el tag :latest) + "@"
+    # + digest, p.ej.:
+    #   zot.registry.svc.cluster.local:5000/openclaw-duel/sample-app@sha256:abcd...
+    # Firmar por DIGEST (no por tag) es la buena practica: el tag es mutable, el
+    # digest es inmutable y es exactamente lo que se verifica despues.
+    #
+    # PATRON: la imagen cosign es DISTROLESS (sin shell), no puede leer el fichero
+    # ni componer strings. Por eso un step previo compose-ref (ubi-minimal, CON
+    # shell) lee el digest, compone la ref y la emite como STEP RESULT
+    # (results.image-ref-by-digest). Tekton interpola ese result en los args del
+    # step cosign via $(steps.compose-ref.results.image-ref-by-digest) — asi el
+    # step distroless recibe la ref ya resuelta como argumento posicional.
+    - name: sign
+      runAfter:
+        - trivy-scan
+      params:
+        - name: sample-app-image
+          value: $(params.sample-app-image)
+      workspaces:
+        - name: shared
+          workspace: shared
+      taskSpec:
+        params:
+          - name: sample-app-image
+            type: string
+        results:
+          - name: sign-status
+            description: OK (firmado) | SKIPPED (sin digest).
+          # La ref por digest la EMITE el step compose-ref (step result) y la Task
+          # la expone aqui con value=$(steps.<step>.results.<name>). Asi queda
+          # visible como result de la Task (p.ej. para depurar) ademas de ser
+          # consumible por el step cosign.
+          - name: image-ref-by-digest
+            description: Ref completa de la imagen por digest (repo@sha256:...).
+            value: $(steps.compose-ref.results.image-ref-by-digest)
+        workspaces:
+          - name: shared
+        stepTemplate:
+          volumeMounts:
+            - name: cosign-keys
+              mountPath: /var/cosign
+              readOnly: true
+        steps:
+          # STEP compose-ref (ubi-minimal, CON shell): lee el digest que dejo kaniko
+          # en image-digest.txt y compone la ref por digest (repo SIN tag + @digest).
+          # La escribe como STEP RESULT (step.results.*.path) para que Tekton la
+          # interpole en los args del step cosign (DISTROLESS, sin shell, no puede
+          # leer ficheros ni componer strings). Los step results son referenciables
+          # en command/args/env de un step POSTERIOR del mismo Task.
+          - name: compose-ref
+            image: registry.access.redhat.com/ubi9/ubi-minimal
+            workingDir: $(workspaces.shared.path)
+            results:
+              - name: image-ref-by-digest
+                type: string
+                description: repo@sha256:... de la imagen empujada por kaniko.
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              IMG="$(params.sample-app-image)"
+              DIGEST_FILE="$(workspaces.shared.path)/image-digest.txt"
+              if [ ! -s "${DIGEST_FILE}" ]; then
+                echo "[sign] ERROR: no existe el digest ($DIGEST_FILE). build no empujo?"
+                exit 1
+              fi
+              DIGEST="$(tr -d '[:space:]' < "${DIGEST_FILE}")"
+              # Repo = la imagen SIN el tag. IMG es host:5000/openclaw-duel/sample-app:latest.
+              # Separamos el ultimo segmento (sample-app:latest), le quitamos ':tag'
+              # y lo recomponemos con el resto del path -> repo sin tag.
+              NAME_AND_TAG="${IMG##*/}"          # p.ej. sample-app:latest
+              NAME="${NAME_AND_TAG%%:*}"         # p.ej. sample-app
+              REPO="${IMG%/*}/${NAME}"           # host:5000/openclaw-duel/sample-app
+              REF="${REPO}@${DIGEST}"
+              echo "[sign] ref por digest: ${REF}"
+              printf '%s' "${REF}" | tr -d '\n' > "$(step.results.image-ref-by-digest.path)"
+          # STEP cosign-sign-image: imagen cosign DISTROLESS (sin shell) -> NO
+          # usamos `script:` sino command/args. Firma la IMAGEN del registry por
+          # digest (ref interpolada desde el RESULT del step anterior). cosign
+          # empuja la firma al registry (artefacto OCI). Zot es HTTP ->
+          # --allow-insecure-registry. --tlog-upload=false => offline (sin Rekor).
+          - name: cosign-sign-image
+            image: gcr.io/projectsigstore/cosign:v2.4.1
+            workingDir: $(workspaces.shared.path)
+            env:
+              # Password de la clave privada, desde el mismo Secret (nunca en claro).
+              - name: COSIGN_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: duel-cosign-keys
+                    key: cosign.password
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            command:
+              - /ko-app/cosign
+            args:
+              - sign
+              - --yes
+              - --tlog-upload=false
+              - --allow-insecure-registry
+              - --key=/var/cosign/cosign.key
+              - $(steps.compose-ref.results.image-ref-by-digest)
+          # STEP record: deja constancia y fija el Result (ubi-minimal, con shell).
+          # Lee la ref por digest del step result anterior (interpolado en el echo).
+          - name: record-sign
+            image: registry.access.redhat.com/ubi9/ubi-minimal
+            workingDir: $(workspaces.shared.path)
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            env:
+              - name: SIGNED_REF
+                value: $(steps.compose-ref.results.image-ref-by-digest)
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              echo "OK" > "$(results.sign-status.path)"
+              echo "[sign] FIRMA REAL de la imagen del registry por digest:"
+              echo "[sign]   ${SIGNED_REF}"
+              echo "[sign] cosign empujo la firma al registry Zot (artefacto OCI .sig"
+              echo "[sign] junto a la imagen). La etapa verify la validara por digest."
+        volumes:
+          - name: cosign-keys
+            secret:
+              secretName: duel-cosign-keys
+
+    # === ETAPA 6: GATE DEL AGENTE AZUL + merge (SIN CAMBIOS) ================
+    # EL CORAZON DEL ATAQUE. El agente AZUL (sidecar A2A server) revisa el PR; el
+    # ROJO (step A2A client) se lo manda. El PR envenenado hace que el azul apruebe.
+    # El codigo se monta desde el ConfigMap duel-agent-src sobre la imagen base.
+    - name: gate-blue
+      runAfter:
+        - sign
+      params:
+        - name: pr-diff
+          value: $(params.pr-diff)
+        - name: agent-base-image
+          value: $(params.agent-base-image)
+        - name: agent-mode
+          value: $(params.agent-mode)
+      taskSpec:
+        params:
+          - name: pr-diff
+            type: string
+          - name: agent-base-image
+            type: string
+          - name: agent-mode
+            type: string
+        results:
+          - name: decision
+            description: APPROVE o BLOCK emitido por el agente azul.
+        sidecars:
+          - name: blue-reviewer
+            image: $(params.agent-base-image)
+            workingDir: /opt/duel
+            env:
+              - name: AGENT_MODE
+                value: $(params.agent-mode)
+              - name: BLUE_A2A_HOST
+                value: "0.0.0.0"
+              - name: BLUE_A2A_PORT
+                value: "9999"
+              - name: PYTHONPATH
+                value: "/tmp/duel"
+              - name: LLM_PROVIDER
+                valueFrom:
+                  configMapKeyRef:
+                    name: duel-llm-config
+                    key: LLM_PROVIDER
+                    optional: true
+              - name: LLM_MODEL
+                valueFrom:
+                  configMapKeyRef:
+                    name: duel-llm-config
+                    key: LLM_MODEL
+                    optional: true
+              - name: OPENAI_BASE_URL
+                valueFrom:
+                  configMapKeyRef:
+                    name: duel-llm-config
+                    key: OPENAI_BASE_URL
+                    optional: true
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            envFrom:
+              - secretRef:
+                  name: duel-llm-secret
+                  optional: true
+            volumeMounts:
+              - name: agent-src
+                mountPath: /var/agent-src
+                readOnly: true
+            command:
+              - /bin/sh
+              - -c
+              - |
+                set -e
+                echo "[blue-sidecar] copiando código del agente (ConfigMap) a un dir escribible..."
+                mkdir -p /tmp/duel
+                cp /var/agent-src/*.py /var/agent-src/requirements.txt /tmp/duel/
+                echo "[blue-sidecar] instalando deps (requirements.txt) desde PyPI..."
+                pip install --no-cache-dir --target /tmp/deps -r /tmp/duel/requirements.txt \
+                  >/tmp/pip.log 2>&1 || { echo "[blue-sidecar] pip falló:"; tail -20 /tmp/pip.log; exit 1; }
+                export PYTHONPATH="/tmp/duel:/tmp/deps:${PYTHONPATH:-}"
+                echo "[blue-sidecar] arrancando A2A server..."
+                exec python /tmp/duel/blue_a2a_server.py
+            readinessProbe:
+              httpGet:
+                path: /.well-known/agent-card.json
+                port: 9999
+              initialDelaySeconds: 3
+              periodSeconds: 2
+              failureThreshold: 60
+        stepTemplate:
+          volumeMounts:
+            - name: agent-code
+              mountPath: /opt/duel
+            - name: agent-src
+              mountPath: /var/agent-src
+        steps:
+          - name: prepare-agent-code
+            image: $(params.agent-base-image)
+            env:
+              - name: AGENT_MODE
+                value: $(params.agent-mode)
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              echo "[prep] Copiando codigo del agente (ConfigMap) a /opt/duel (escribible)..."
+              cp /var/agent-src/*.py /var/agent-src/requirements.txt /opt/duel/
+              ls -l /opt/duel
+              echo "[prep] instalando deps (requirements.txt) en /opt/duel/.deps..."
+              pip install --no-cache-dir --target /opt/duel/.deps -r /opt/duel/requirements.txt \
+                || echo "[prep] AVISO: pip fallo (sin egress a PyPI?). El rojo usara transporte directo."
+          - name: red-open-pr
+            image: $(params.agent-base-image)
+            workingDir: /opt/duel
+            env:
+              - name: AGENT_MODE
+                value: $(params.agent-mode)
+              - name: PYTHONPATH
+                value: "/opt/duel:/opt/duel/.deps"
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              echo "[rojo] Generando los PRs del duelo (diffs/)..."
+              python red_agent.py >/dev/null
+
+              echo "[rojo] Abriendo PR $(params.pr-diff) y mandandoselo al AZUL por A2A..."
+              decision="$(python review_pr.py "$(params.pr-diff)" --a2a http://127.0.0.1:9999)"
+              echo "[rojo] el AZUL (A2A server) respondio: ${decision}"
+
+              printf '%s' "${decision}" | tr -d '\n' > "$(results.decision.path)"
+          - name: simulate-merge
+            image: registry.access.redhat.com/ubi9/ubi-minimal
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              DEC="$(cat "$(results.decision.path)")"
+              echo "[merge] decision del azul = ${DEC}"
+              echo "[merge] SIMULACION: aqui se mergearia el PR. El duel-runner NO"
+              echo "[merge] tiene RBAC de merge a proposito (frontera human-in-the-loop"
+              echo "[merge] del Acto 4). El DEPLOY GitOps real lo hace la etapa 4."
+        volumes:
+          - name: agent-code
+            emptyDir: {}
+          - name: agent-src
+            configMap:
+              name: duel-agent-src
+
+    # === ETAPA 7: VERIFY (cosign, verificacion de la firma) =================
+    # cosign verifica la firma del blob del tar con la clave PUBLICA (cadena
+    # firma->verificacion). Demuestra que la supply chain de la IMAGEN esta intacta.
+    # PUNTO CLAVE DE LA CHARLA: la firma VERIFICA CORRECTAMENTE porque el PR
+    # envenenado NO toco la imagen (solo config) -> la firma NO detecta el ataque.
+    # Corre despues del gate (verifica lo que se desplegaria) y antes del deploy.
+    - name: verify
+      runAfter:
+        - gate-blue
+      params:
+        - name: sample-app-image
+          value: $(params.sample-app-image)
+      workspaces:
+        - name: shared
+          workspace: shared
+      taskSpec:
+        results:
+          - name: verify-status
+            description: OK (firma valida) | FAIL (firma invalida) | SKIPPED (sin firma).
+        workspaces:
+          - name: shared
+        stepTemplate:
+          volumeMounts:
+            - name: cosign-keys
+              mountPath: /var/cosign
+              readOnly: true
+        params:
+          - name: sample-app-image
+            type: string
+        steps:
+          # STEP compose-ref (ubi-minimal, CON shell): lee el digest que dejo kaniko
+          # en image-digest.txt y compone la ref de la imagen del registry por digest
+          # (repo SIN tag + @sha256:...). Firmar/verificar por digest (no por tag) es
+          # la buena practica: el tag es mutable, el digest no.
+          - name: compose-ref
+            image: registry.access.redhat.com/ubi9/ubi-minimal
+            workingDir: $(workspaces.shared.path)
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            results:
+              - name: image-ref-by-digest
+                description: Ref completa de la imagen por digest (repo@sha256:...).
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              # Mismo patron que el compose-ref de la etapa SIGN (ese ya valida OK).
+              # El result del step se escribe con la ruta step.results (mas abajo).
+              IMG="$(params.sample-app-image)"
+              DIGEST_FILE="$(workspaces.shared.path)/image-digest.txt"
+              DIGEST="$(tr -d '[:space:]' < "${DIGEST_FILE}")"
+              NAME_AND_TAG="${IMG##*/}"          # sample-app:latest
+              NAME="${NAME_AND_TAG%%:*}"         # sample-app
+              REPO="${IMG%/*}/${NAME}"           # host:5000/openclaw-duel/sample-app
+              REF="${REPO}@${DIGEST}"
+              printf '%s' "${REF}" | tr -d '\n' > "$(step.results.image-ref-by-digest.path)"
+              echo "[verify] verificando imagen del registry: ${REF}"
+          # STEP cosign-verify: verifica la firma de la IMAGEN DEL REGISTRY por digest
+          # con la clave PUBLICA. Zot es HTTP interno -> --allow-insecure-registry.
+          # Si la firma NO fuera valida, cosign sale !=0 y el step falla -> el deploy
+          # NO corre. En la demo la firma ES valida (el ataque no toca la imagen).
+          # Imagen cosign DISTROLESS (sin shell) -> command/args, no script.
+          - name: cosign-verify
+            image: gcr.io/projectsigstore/cosign:v2.4.1
+            env:
+              - name: COSIGN_REPOSITORY
+                value: ""
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            command:
+              - /ko-app/cosign
+            args:
+              - verify
+              - --insecure-ignore-tlog=true
+              - --allow-insecure-registry=true
+              - --key=/var/cosign/cosign.pub
+              - $(steps.compose-ref.results.image-ref-by-digest)
+          # STEP record-verify: fija el Result y la narrativa (ubi-minimal, con shell).
+          # Si llegamos aqui, cosign verifico OK (si no, el step anterior habria
+          # fallado la task). El Result OK habilita el when de deploy-gitops.
+          - name: record-verify
+            image: registry.access.redhat.com/ubi9/ubi-minimal
+            workingDir: $(workspaces.shared.path)
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              echo "OK" > "$(results.verify-status.path)"
+              echo "[verify] FIRMA VALIDA. La supply chain de la IMAGEN esta intacta."
+              echo "[verify] PUNTO DE CHARLA: la firma verifica porque el PR envenenado"
+              echo "[verify] NO toco la imagen (solo CONFIG). La firma NO detecta el ataque."
+              echo "[verify] Lo que lo atrapa es la ADMISION (Kyverno), no la firma."
+        volumes:
+          - name: cosign-keys
+            secret:
+              secretName: duel-cosign-keys
+
+    # === ETAPA 8: DEPLOY GitOps (Argo CD) ===================================
+    # SOLO si decision==APPROVE Y verify-status in (OK, SKIPPED): promueve via
+    # Argo CD. AQUI entra la ADMISION: Kyverno rechaza el Deployment si no lleva la
+    # anotacion de aprobacion-humana (defensa en capas). El agente aprobo y la firma
+    # verifico, PERO la policy de admision para el ataque.
+    - name: deploy-gitops
+      runAfter:
+        - verify
+      when:
+        - input: "$(tasks.gate-blue.results.decision)"
+          operator: in
+          values: ["APPROVE"]
+        # La verificacion de firma NO debe haber fallado (OK o SKIPPED por no haber
+        # registro; FAIL abortaria el deploy). Cadena firma->verificacion->deploy.
+        - input: "$(tasks.verify.results.verify-status)"
+          operator: in
+          values: ["OK", "SKIPPED"]
+      workspaces:
+        - name: shared
+          workspace: shared
+      taskSpec:
+        workspaces:
+          - name: shared
+        steps:
+          - name: argocd-apply
+            image: registry.access.redhat.com/ubi9/ubi-minimal
+            volumeMounts:
+              - name: argo-app
+                mountPath: /var/argo-app
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              echo "[deploy] El azul APROBO y la firma VERIFICO. Promoviendo via GitOps (Argo CD)."
+              echo "[deploy] Application de Argo CD a registrar:"
+              cat /var/argo-app/application-sample-app.yaml
+              echo
+              echo "[deploy] En un cluster con permisos de API, este step haria:"
+              echo "[deploy]   kubectl apply -f /var/argo-app/application-sample-app.yaml"
+              echo "[deploy] y Argo CD (ns argocd) sincronizaria la app de ejemplo."
+              echo "[deploy]"
+              echo "[deploy] ===== DEFENSA EN CAPAS (lo que FRENA el ataque) ====="
+              echo "[deploy] Aunque el gate del azul aprobo y la firma es valida, el"
+              echo "[deploy] Deployment de la app NO lleva la anotacion"
+              echo "[deploy]   duel.redteam/human-approved: \"true\""
+              echo "[deploy] -> la ClusterPolicy Kyverno 'duel-require-human-approval'"
+              echo "[deploy]    RECHAZA el Deployment EN ADMISION. El agente no puede"
+              echo "[deploy]    poner esa anotacion (no tiene RBAC de API). La firma no"
+              echo "[deploy]    ayudo (el ataque toca CONFIG, no la imagen); la admision SI."
+              echo "[deploy]"
+              echo "[deploy] HONESTIDAD: el 'kubectl apply' NO se ejecuta aqui (el runner"
+              echo "[deploy] no tiene token de API ni RBAC, frontera del Acto 4). El apply"
+              echo "[deploy] real lo hace el operador/SA; ahi es donde Kyverno rechaza."
+        volumes:
+          - name: argo-app
+            configMap:
+              name: duel-argo-app-src

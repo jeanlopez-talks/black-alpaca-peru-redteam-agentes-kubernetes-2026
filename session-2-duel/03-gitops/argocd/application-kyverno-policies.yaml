@@ -1,0 +1,37 @@
+# Application de Argo CD que despliega las POLICIES Kyverno de admission control
+# del flujo DevSecOps (propuesta 2). Separada del pipeline porque las ClusterPolicy
+# son cluster-scoped (no namespaced), y así se sincronizan de forma independiente.
+#
+# NOTA: esto despliega las POLICIES, no Kyverno en sí. Kyverno (el webhook) es
+# infraestructura de plataforma y se gestiona aparte (en el repo del homelab,
+# components/platform/, o se instala una vez). Ver ../pipeline/kyverno/README.md.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: duel-kyverno-policies
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: black-alpaca-2026
+    black-alpaca.session: "2-duel"
+  annotations:
+    # Las policies deben existir ANTES de que el pipeline intente desplegar la
+    # sample-app (si no, no habría admission control que frenar el ataque).
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: duel-devsecops
+  source:
+    # AJUSTAR al publicar el repo de la charla.
+    repoURL: https://github.com/jeanpaul-lopez/black-alpaca-redteam-agentes-k8s.git
+    targetRevision: main
+    path: session-2-duel/03-gitops/pipeline/kyverno
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyverno
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

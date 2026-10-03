@@ -1,0 +1,147 @@
+# Deployment + Service del agente DevSecOps (human-in-the-loop).
+#
+# PATRON SIN REGISTRY (igual que el duelo, k3s vanilla): NO se construye imagen.
+# Se usa la imagen base publica ubi9/python-311 y se monta el CODIGO del agente
+# via ConfigMap `backstage-agent-src`. Un initContainer instala las deps
+# (fastapi/uvicorn + opcionalmente langchain/kubernetes) con pip a un emptyDir
+# compartido; el contenedor principal arranca server.py desde el codigo montado.
+#
+# EL ConfigMap `backstage-agent-src` NO se versiona en este kustomize a proposito:
+# el codigo vive en ../../../04-lab/backstage-agent/ (fuera de este dir) y referenciarlo con
+# `../../../04-lab/backstage-agent` viola el load-restrictor de kustomize/Argo CD.
+# Igual que el duelo, lo crea el operador en el deploy con un comando documentado
+# (ver ../README.md, seccion "Codigo del agente sin registry"):
+#   kubectl -n backstage create configmap backstage-agent-src \
+#     --from-file=../../../04-lab/backstage-agent/ --dry-run=client -o yaml | kubectl apply -f -
+#
+# ALTERNATIVA REQUIERE-BUILD: construir ../../../04-lab/backstage-agent/Containerfile, empujar
+# a un registry y cambiar la imagen del contenedor por la propia (sin initContainer
+# ni ConfigMap de codigo). Ver README.md.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backstage-devsecops-agent
+  namespace: backstage
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: backstage-agent
+    app: backstage-devsecops-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backstage-devsecops-agent
+  template:
+    metadata:
+      labels:
+        app: backstage-devsecops-agent
+        app.kubernetes.io/part-of: redteam-agents
+        redteam.component: backstage-agent
+    spec:
+      serviceAccountName: backstage-devsecops-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 0
+        seccompProfile:
+          type: RuntimeDefault
+      # initContainer: instala las deps a un emptyDir compartido (sin registry).
+      initContainers:
+        - name: pip-install
+          image: registry.access.redhat.com/ubi9/python-311
+          command:
+            - sh
+            - -c
+            # Instala al prefix compartido; si no hay egress a PyPI, el agente
+            # igual arranca en modo plantilla (solo necesita fastapi/uvicorn, que
+            # si se intentan instalar aqui). PYTHONPATH se ajusta en el main.
+            - "pip install --no-cache-dir --target=/deps -r /src/requirements.txt || echo 'pip fallo: el agente puede degradar a modo plantilla si faltan deps'"
+          volumeMounts:
+            - name: src
+              mountPath: /src
+            - name: deps
+              mountPath: /deps
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: agent
+          image: registry.access.redhat.com/ubi9/python-311
+          workingDir: /src
+          command: ["python", "server.py"]
+          env:
+            - name: PORT
+              value: "8080"
+            # Deps instaladas por el initContainer + codigo montado.
+            - name: PYTHONPATH
+              value: "/deps:/src"
+            # LLM local del cluster (vLLM). Mismos valores que el duelo.
+            - name: LLM_PROVIDER
+              value: "openai-compatible"
+            - name: LLM_MODEL
+              value: "qwen3-8b"
+            - name: OPENAI_BASE_URL
+              value: "http://vllm.inference.svc.cluster.local:8000/v1"
+            - name: OPENAI_API_KEY
+              value: "not-needed"
+            # Namespace del pipeline del duelo que el agente lee.
+            - name: DUEL_NAMESPACE
+              value: "openclaw-duel"
+          envFrom:
+            # Token humano de aprobacion (gate del /approve).
+            - secretRef:
+                name: backstage-agent-human-token
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - name: src
+              mountPath: /src
+            - name: deps
+              mountPath: /deps
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        # Codigo del agente (ConfigMap creado por el operador; ver cabecera).
+        - name: src
+          configMap:
+            name: backstage-agent-src
+        # Deps instaladas por el initContainer.
+        - name: deps
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backstage-devsecops-agent
+  namespace: backstage
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: backstage-agent
+    app: backstage-devsecops-agent
+spec:
+  selector:
+    app: backstage-devsecops-agent
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP

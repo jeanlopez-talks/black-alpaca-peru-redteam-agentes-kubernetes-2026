@@ -1,0 +1,53 @@
+# Application de Argo CD que DESPLIEGA la app de ejemplo (etapa 4 del flujo:
+# DEPLOY GitOps). VERSION KUBERNETES VANILLA (k3s): Argo CD esta instalado en el
+# namespace `argocd` (NO openshift-gitops).
+#
+# MODELO DEL RADIO DE EXPLOSION (Acto 3): esta Application sincroniza
+# sample-app. Cuando el gate del azul aprueba el PR envenenado, lo
+# aprobado se despliega SOLO — Argo CD reconcilia el estado deseado del repo con
+# el cluster sin intervencion humana. Es exactamente el "lo aprobado se despliega
+# solo" del enunciado.
+#
+# HONESTIDAD — que es real y que depende del entorno:
+#   - La Application en si es 100% real y funcional con el Argo CD del cluster.
+#   - `syncPolicy.automated` esta COMENTADO por defecto: en la demo controlada se
+#     sincroniza a mano (`argocd app sync` / boton Sync) para no desplegar sin
+#     querer. Para modelar el auto-deploy REAL del Acto 3 (lo aprobado se
+#     despliega solo), descomenta el bloque `automated` de abajo.
+#   - El `repoURL` es un PLACEHOLDER: ajustalo al remoto real de este repo. Argo
+#     CD necesita un repo Git accesible; no sincroniza desde un working dir local.
+#   - El pipeline Tekton (etapa deploy-gitops) muestra el `kubectl apply` de ESTA
+#     Application pero NO lo ejecuta (el runner no tiene RBAC); el apply lo hace
+#     el operador y el sync efectivo lo hace Argo CD.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: duel-sample-app
+  # Argo CD vanilla vive en el namespace `argocd` (no openshift-gitops).
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: duel
+  # finalizer para que al borrar la Application se borren tambien sus recursos.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    # PLACEHOLDER: ajustar al remoto real de este repositorio.
+    repoURL: https://github.com/jeanlopezdev/black-alpaca-peru-redteam-agentes-kubernetes-2026.git
+    targetRevision: main
+    path: session-2-duel/03-gitops/pipeline/sample-app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openclaw-duel
+  syncPolicy:
+    # --- Sync manual por defecto (demo controlada) -------------------------
+    # Sin bloque `automated`: Argo CD muestra OutOfSync y espera un Sync manual.
+    #
+    # --- Auto-deploy del Acto 3 (descomentar para el radio de explosion real)
+    # automated:
+    #   prune: true
+    #   selfHeal: true
+    syncOptions:
+      - CreateNamespace=false   # el namespace openclaw-duel ya existe (namespace.yaml)

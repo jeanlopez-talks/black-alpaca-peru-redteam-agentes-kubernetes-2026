@@ -1,0 +1,52 @@
+# Application de Argo CD que DESPLIEGA Backstage (IDP) + el agente DevSecOps.
+# VERSION KUBERNETES VANILLA (k3s): Argo CD esta instalado en el namespace
+# `argocd` (NO openshift-gitops), igual que la Application del duelo.
+#
+# TODO GESTIONADO POR GITOPS: Backstage, su app-config/plugins, el agente
+# human-in-the-loop y su RBAC se sincronizan desde ../backstage/ por Argo CD.
+# Aplicar esta Application al namespace argocd:
+#   kubectl apply -f application-backstage.yaml
+#
+# PASO MANUAL (sin registry): antes del sync, crear el ConfigMap con el codigo
+# del agente (ver README.md, "Codigo del agente sin registry"):
+#   kubectl -n backstage create configmap backstage-agent-src \
+#     --from-file=../../04-lab/backstage-agent/ --dry-run=client -o yaml | kubectl apply -f -
+# (El namespace backstage lo crea esta Application con CreateNamespace=true; crea
+# primero el ns o aplica el ConfigMap despues del primer sync.)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: duel-backstage
+  # Argo CD vanilla vive en el namespace `argocd` (no openshift-gitops).
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: backstage
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: duel-devsecops
+  source:
+    # PLACEHOLDER — AJUSTAR al remoto real de este repositorio (la charla aun no
+    # esta publicada). Mismo repoURL que la Application del duelo.
+    repoURL: https://github.com/jeanlopezdev/black-alpaca-peru-redteam-agentes-kubernetes-2026.git
+    targetRevision: main
+    path: session-2-duel/03-gitops/backstage
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backstage
+  syncPolicy:
+    # Backstage no es parte del radio de explosion del duelo; se puede
+    # auto-sincronizar sin riesgo (a diferencia del deploy del duelo, que se deja
+    # manual a proposito). selfHeal revierte cambios manuales hacia git.
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 20s
+        factor: 2
+        maxDuration: 3m

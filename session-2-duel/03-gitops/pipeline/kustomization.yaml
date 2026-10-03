@@ -1,0 +1,84 @@
+# Kustomize del duelo rojo-vs-azul (propuesta 2) — FLUJO DevSecOps de 4 etapas.
+# VERSION KUBERNETES VANILLA (k3s), NO OpenShift. Desplegable por Argo CD.
+# Tekton Pipelines y Argo CD YA estan instalados (Argo CD en el namespace
+# `argocd`, NO openshift-gitops).
+#
+# El pipeline Tekton 'duel-devsecops' encadena: BUILD -> SCAN -> GATE(azul) ->
+# DEPLOY GitOps (Argo CD). Ver pipeline.yaml y README.md.
+#
+# DIFERENCIA CLAVE vs OpenShift (punto de charla):
+#   - OpenShift tenia BuildConfig + ImageStream + registry interno para construir
+#     y almacenar la imagen del agente azul. En k3s vanilla NO hay registry
+#     interno, NI acceso SSH a los nodos (Flatcar inmutable), NI mirror. Por eso
+#     NO se puede construir+importar una imagen propia (`ctr images import` por
+#     nodo no es viable sin acceso a los nodos).
+#   - Estrategia vanilla: usar una IMAGEN BASE PUBLICA que el cluster si puede
+#     pullear (ubi9/python-311) y montar el CODIGO del agente via ConfigMap
+#     (duel-agent-src). El modo rules corre con solo stdlib; el modo llm instala
+#     las deps con un initContainer (pip install a un emptyDir compartido).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Todos los recursos (incluidos los ConfigMap generados) van al namespace del
+# duelo. Sin esto, los configMapGenerator caen en 'default' y el pipeline no los
+# encuentra (sample-app-src / duel-argo-app-src).
+namespace: openclaw-duel
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: redteam-agents
+      redteam.component: duel
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - networkpolicy.yaml
+  - serviceaccount.yaml
+  - secret-llm.yaml
+  # duel-cosign-keys NO se versiona: se crea fuera de Git con
+  #   cosign generate-key-pair k8s://openclaw-duel/duel-cosign-keys
+  # (ver README.md, seccion "Clave cosign").
+  - pipeline.yaml
+  - pipelinerun.yaml
+  # NOTA: kyverno/ NO va aqui. Son ClusterPolicy (cluster-scoped) + el install.yaml
+  # de Kyverno; aplicarlos con el namespace global (openclaw-duel) de este kustomize
+  # romperia su alcance. Se aplican por separado (ver kyverno/README.md).
+  # NOTA: application-sample-app.yaml NO va aquí como recurso: el namespace global
+  # (openclaw-duel) lo forzaría fuera de `argocd`, donde Argo CD no lo procesaría.
+  # Se aplica por separado al namespace argocd:
+  #   kubectl apply -f application-sample-app.yaml
+  # (Su contenido SÍ se usa abajo como configMapGenerator para la etapa DEPLOY.)
+
+# ConfigMaps con la fuente que el pipeline materializa en runtime:
+#   - sample-app-src   : Containerfile + index.html de la app de ejemplo (etapa BUILD).
+#   - duel-argo-app-src: el manifiesto de la Application de Argo CD (etapa DEPLOY).
+# Se generan desde los MISMOS archivos versionados (una sola fuente de verdad).
+#
+# EL CODIGO DE LOS AGENTES (ConfigMap `duel-agent-src`) NO se genera aqui a
+# proposito: vive en ../../04-lab/duel/ (fuera de este root kustomize) y referenciarlo con
+# `../../04-lab/duel` viola el load-restrictor de kustomize/Argo CD (que no permite
+# leer archivos fuera del directorio de la app). Para no duplicar el codigo en
+# dos sitios, ese ConfigMap lo crea el operador en el deploy con un comando
+# documentado (ver README.md, seccion "Codigo de los agentes sin registry"):
+#     kubectl -n openclaw-duel create configmap duel-agent-src \
+#       --from-file=../../04-lab/duel/ --dry-run=client -o yaml | kubectl apply -f -
+# El pipeline lo monta como volumen (ver pipeline.yaml, etapa gate-blue).
+# En k3s vanilla SIN registry, montar el codigo por ConfigMap es la opcion
+# pragmatica (al reves que en OpenShift, donde habia BuildConfig + registry interno).
+configMapGenerator:
+  - name: sample-app-src
+    files:
+      - sample-app/Containerfile
+      - sample-app/index.html
+  - name: duel-argo-app-src
+    files:
+      - application-sample-app.yaml
+  # Entrada para la etapa SAST (semgrep + gitleaks): el config del PR envenenado,
+  # para que el escaneo shift-left tenga material realista que analizar.
+  - name: duel-sast-input
+    files:
+      - sast-input/deploy-notes.md
+
+# Nombres estables (sin hash) para que el pipeline los referencie por nombre fijo.
+generatorOptions:
+  disableNameSuffixHash: true

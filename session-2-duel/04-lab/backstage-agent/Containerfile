@@ -1,0 +1,30 @@
+# Containerfile del agente DevSecOps (human-in-the-loop).
+#
+# DOS FORMAS DE DESPLEGAR (ver README.md y ../../03-gitops/backstage/agent/):
+#   1) DESPLEGABLE-YA (sin registry, patron del duelo): NO se usa esta imagen; se
+#      corre la imagen base publica ubi9/python-311 y se monta el codigo por
+#      ConfigMap (configmap-agent-src), instalando deps con un initContainer.
+#      Asi no hace falta build ni registry (k3s vanilla sin registry interno).
+#   2) REQUIERE-BUILD: construir ESTA imagen (kaniko/podman) y empujarla a un
+#      registry que el cluster pueda pullear. Mas limpio en produccion.
+#
+# Este Containerfile cubre el camino (2). El (1) es el que llevan los manifiestos
+# por defecto para que sea aplicable de una.
+FROM registry.access.redhat.com/ubi9/python-311
+
+WORKDIR /app
+
+# Deps primero (capa cacheable).
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Codigo del agente.
+COPY llm_factory.py tools.py agent.py server.py /app/
+
+# Usuario no root (ubi9/python-311 ya corre como 1001). SecurityContext vanilla.
+USER 1001
+
+EXPOSE 8080
+
+# Arranca el servidor FastAPI.
+CMD ["python", "server.py"]

@@ -1,0 +1,17 @@
+# Kustomize de las policies Kyverno (admission control) del flujo DevSecOps.
+# Son ClusterPolicy (cluster-scoped); las despliega la Application
+# `duel-kyverno-policies` de Argo CD.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: black-alpaca-2026
+      black-alpaca.session: "2-duel"
+    includeSelectors: false
+
+resources:
+  # Frena el ataque: exige aprobación humana que el agente no puede dar (Enforce).
+  - policy-require-human-approval.yaml
+  # Verificación de firma cosign de las imágenes (Audit sin registry; Enforce con él).
+  - policy-verify-images.yaml

@@ -1,0 +1,140 @@
+# Deployment + Service + ConfigMap de la APP DE EJEMPLO que Argo CD sincroniza
+# (etapa DEPLOY). VERSION KUBERNETES VANILLA (k3s).
+#
+# Esta es "la carga util desplegada": cuando el gate del azul aprueba (Acto 3),
+# Argo CD sincroniza ESTE Deployment y la app de ejemplo empieza a correr en el
+# cluster. El radio de explosion es real.
+#
+# IMAGEN SIN REGISTRY (honestidad): en k3s NO hay registry interno ni acceso a
+# los nodos (Flatcar inmutable); la imagen construida en la etapa BUILD (kaniko
+# --no-push) NO se puede pullear. Por eso este Deployment usa DIRECTAMENTE la
+# MISMA imagen base publica (ubi9/nginx-120) y le inyecta el index.html via
+# ConfigMap. El contenido desplegado es identico al que produciria el build; lo
+# unico "simulado" es el transporte de la imagen (que un cluster sin registry no
+# permite). Ver sample-app/Containerfile para el detalle.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sample-app-html
+  namespace: openclaw-duel
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: duel
+    app: sample-app
+# El index.html que sirve nginx. (El mismo archivo versionado en sample-app/.)
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="utf-8">
+      <title>acme-lab — sample app (duelo rojo vs azul)</title>
+    </head>
+    <body>
+      <h1>acme-lab sample app</h1>
+      <p>
+        Esta es la app trivial que el pipeline DevSecOps construye y que Argo CD
+        despliega. En el duelo, es "la carga util que el atacante logra desplegar"
+        cuando el agente azul (el gate) es enganado por el PR envenenado (Acto 3).
+      </p>
+      <p>Si ves esta pagina en el cluster, el flujo GitOps llego hasta el DEPLOY.</p>
+    </body>
+    </html>
+---
+# ADMISSION CONTROL (Kyverno) — defensa en capas:
+# Este Deployment NO lleva la anotacion 'duel.redteam/human-approved: "true"' a
+# PROPOSITO. La ClusterPolicy Kyverno 'duel-require-human-approval' (ver
+# ../kyverno/) RECHAZA en admision cualquier Deployment de este namespace
+# que no la tenga. Asi, aunque el gate del agente azul apruebe el PR envenenado y
+# la firma cosign verifique (el ataque solo toca CONFIG, no la imagen), el deploy
+# es RECHAZADO por admision: el agente no puede poner esa anotacion (no tiene RBAC
+# de API); solo un HUMANO la añade tras revisar de verdad.
+#
+# Para el camino "aprobado por humano" (el deploy SI pasa admision), un operador
+# añadiria bajo metadata:
+#   annotations:
+#     duel.redteam/human-approved: "true"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-app
+  namespace: openclaw-duel
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: duel
+    app: sample-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sample-app
+  template:
+    metadata:
+      labels:
+        app: sample-app
+        app.kubernetes.io/part-of: redteam-agents
+        redteam.component: duel
+    spec:
+      containers:
+        - name: sample-app
+          # Imagen base publica (sin registry interno; ver cabecera). El index.html
+          # llega por el ConfigMap sample-app-html montado en el docroot de nginx.
+          image: registry.access.redhat.com/ubi9/nginx-120
+          command: ["nginx", "-g", "daemon off;"]
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - name: html
+              mountPath: /opt/app-root/src/index.html
+              subPath: index.html
+          # SecurityContext VANILLA (k3s): a diferencia de OpenShift (donde la SCC
+          # restricted-v2 ASIGNA el uid y fijar runAsUser da PodAdmissionFailed),
+          # aqui NO hay SCC: fijamos el uid explicitamente. ubi9/nginx-120 corre
+          # como uid 1001 (grupo root); lo declaramos para dejarlo claro.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+      volumes:
+        - name: html
+          configMap:
+            name: sample-app-html
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sample-app
+  namespace: openclaw-duel
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: duel
+    app: sample-app
+spec:
+  selector:
+    app: sample-app
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

@@ -1,0 +1,55 @@
+# RBAC de Backstage — SOLO LECTURA.
+#
+# Backstage necesita LEER recursos del cluster para los plugins kubernetes y
+# tekton (Deployments, Pods, Services, PipelineRun/TaskRun). NO necesita, y NO
+# se le dan, permisos de escritura: Backstage es un visor. La capacidad de ACTUAR
+# (re-run, aprobar) vive en el AGENTE y pasa por el human-in-the-loop; no en el
+# portal. Esta separacion es parte del blueprint de la charla.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backstage
+  namespace: backstage
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: backstage
+---
+# ClusterRole de solo lectura: core + tekton. Sin verbs de escritura a proposito.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: backstage-read
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: backstage
+rules:
+  - apiGroups: [""]
+    resources: [pods, services, configmaps, limitranges, resourcequotas]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets, statefulsets, daemonsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  # Tekton: el plugin lee PipelineRun/TaskRun para mostrarlos en el portal.
+  - apiGroups: [tekton.dev]
+    resources: [pipelineruns, taskruns, pipelines, tasks]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: backstage-read
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: backstage
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: backstage-read
+subjects:
+  - kind: ServiceAccount
+    name: backstage
+    namespace: backstage

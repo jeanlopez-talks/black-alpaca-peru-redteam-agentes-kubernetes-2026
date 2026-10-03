@@ -1,0 +1,35 @@
+# Kustomize raiz de Backstage (IDP) + el agente DevSecOps. Lo sincroniza la
+# Application de Argo CD `backstage` (ver application-backstage.yaml).
+# VERSION KUBERNETES VANILLA (k3s), igual que el duelo y las posturas.
+#
+# Incluye:
+#   - namespace `backstage`
+#   - RBAC de solo lectura de Backstage (Tekton/K8s)
+#   - app-config + catalogo de Backstage por ConfigMap (plugins Argo CD/Tekton)
+#   - Secret de integraciones (placeholders: tokens Argo CD/K8s)
+#   - Deployment + Service de Backstage
+#   - Service LoadBalancer (MetalLB 10.0.10.66) para exponer el portal
+#   - agent/ : el agente DevSecOps (human-in-the-loop) como componente
+#
+# NO se incluyen aqui los ConfigMap de CODIGO (backstage-agent-src): los crea el
+# operador en el deploy (load-restrictor; ver README.md).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: backstage
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: redteam-agents
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - configmap-app-config.yaml
+  - configmap-catalog.yaml
+  - secret-integrations.yaml
+  - deployment.yaml
+  - service-lb.yaml
+  # El agente (human-in-the-loop) como sub-kustomize.
+  - agent

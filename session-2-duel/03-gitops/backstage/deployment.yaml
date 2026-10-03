@@ -1,0 +1,118 @@
+# Deployment + Service de Backstage (portal de developer / IDP).
+#
+# IMAGEN (ver README.md, "Desplegable-ya vs requiere-build"):
+#   - DESPLEGABLE-YA: la imagen oficial de ejemplo de Backstage
+#     (ghcr.io/backstage/backstage) arranca el portal con el catalogo y el plugin
+#     kubernetes. Es lo que lleva este manifiesto para que sea aplicable de una.
+#   - REQUIERE-BUILD: los plugins de Argo CD y Tekton (que muestran Applications
+#     y PipelineRuns) NO vienen en la imagen base; hay que un build custom que los
+#     declare en package.json. Cuando exista ese build (registry del homelab),
+#     SOLO se cambia el valor de `image` aqui. El app-config ya esta listo.
+#
+# SecurityContext VANILLA (k3s, igual que el resto del lab): runAsNonRoot, uid no
+# root, capabilities drop ALL, seccomp RuntimeDefault, sin privilege escalation.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backstage
+  namespace: backstage
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: backstage
+    app: backstage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backstage
+  template:
+    metadata:
+      labels:
+        app: backstage
+        app.kubernetes.io/part-of: redteam-agents
+        redteam.component: backstage
+    spec:
+      serviceAccountName: backstage
+      securityContext:
+        runAsNonRoot: true
+        # uid no root. La imagen oficial de Backstage corre como uid 1000 (node).
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backstage
+          # DESPLEGABLE-YA (imagen base). AJUSTAR a la imagen del build custom con
+          # los plugins Argo CD/Tekton cuando exista (registry del homelab).
+          image: ghcr.io/backstage/backstage:latest
+          # Arranca el backend apuntando al app-config montado por ConfigMap.
+          args:
+            - "--config"
+            - "/app/app-config.production.yaml"
+          ports:
+            - name: http
+              containerPort: 7007
+              protocol: TCP
+          envFrom:
+            # Tokens de integracion (Argo CD, K8s SA, backend secret) por Secret.
+            - secretRef:
+                name: backstage-integrations
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # app-config montado como archivo (sobrescribe el del contenedor).
+            - name: app-config
+              mountPath: /app/app-config.production.yaml
+              subPath: app-config.production.yaml
+            # Catalogo (entidades) montado donde lo busca catalog.locations.
+            - name: catalog
+              mountPath: /app/catalog/catalog-info.yaml
+              subPath: catalog-info.yaml
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 7007
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 7007
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: app-config
+          configMap:
+            name: backstage-app-config
+        - name: catalog
+          configMap:
+            name: backstage-catalog
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backstage
+  namespace: backstage
+  labels:
+    app.kubernetes.io/part-of: redteam-agents
+    redteam.component: backstage
+    app: backstage
+spec:
+  selector:
+    app: backstage
+  ports:
+    - name: http
+      port: 80
+      targetPort: 7007
+      protocol: TCP
