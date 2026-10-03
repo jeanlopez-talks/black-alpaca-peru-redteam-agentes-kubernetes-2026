@@ -53,6 +53,7 @@ Agrupado **por sesión**; cada sesión numerada en orden de flujo. Lo que usan a
 │   ├── classifier/                     # clasificador de prompt injection (resultados propios)
 │   ├── lab-conventions.md              # contrato de nombres/valores del laboratorio
 │   ├── gitops-architecture.md          # plataforma (repo homelab) vs config de demo (este repo)
+│   ├── platform-architecture.html      # diagrama: qué vive en el clúster y qué fuera, con los flujos
 │   ├── event-research-2025.md          # contexto de la edición anterior
 │   └── slides-index.html               # portada que enlaza ambas presentaciones
 └── README.md
