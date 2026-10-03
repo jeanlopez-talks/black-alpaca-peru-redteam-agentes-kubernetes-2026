@@ -36,6 +36,20 @@ uv run run-duel --llm            # azul con LLM (vLLM local); sin LLM cae a regl
 Resultado esperado: Acto 1 BLOCK, Acto 2/3 APPROVE (el atacante gana a través del azul),
 Acto 4 BLOCK (el azul endurecido trata el diff como dato no confiable).
 
+## Publicar una versión
+
+La imagen la construye el CI de la plataforma (homelab-pipelines) **por versión**:
+
+```bash
+# 1. Sube la versión en pyproject.toml y en los manifiestos (:0.1.0 -> :0.2.0)
+# 2. Etiqueta y empuja: el webhook dispara el build
+git tag agents-v0.2.0 && git push origin agents-v0.2.0
+```
+
+El CI verifica (uv, ruff, pytest), construye y publica
+`ghcr.io/labjp-homelab/devsecops-agents:<versión>`, firmada y con provenance SLSA por
+Tekton Chains. No escribe en este repo: no tiene ninguna credencial para hacerlo.
+
 ## Contrato A2A
 
 - AgentCard en `/.well-known/agent-card.json`; JSON-RPC en `/`; `/healthz` para Kubernetes.

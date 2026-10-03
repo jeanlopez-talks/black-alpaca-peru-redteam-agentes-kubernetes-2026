@@ -31,7 +31,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: agent
-          image: registry.labjp.xyz/black-alpaca/devsecops-agents:0.1.0
+          image: ghcr.io/labjp-homelab/devsecops-agents:0.1.0
           command: ["approval-agent"]
           ports:
             - name: http
