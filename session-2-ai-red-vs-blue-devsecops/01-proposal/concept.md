@@ -67,11 +67,11 @@ No un mejor prompt del azul. Las mismas fronteras de infraestructura de la propu
 ## Estado del lab: YA CONSTRUIDO Y EJECUTADO EN OPENSHIFT ✅
 
 El duelo completo está en `../04-ai-agents/red-blue-agents/` y `../03-gitops/devsecops-pipeline/`, y **ya corrió de punta a punta en un
-clúster OpenShift 4.22 real** (evidencia en `../04-ai-agents/red-blue-agents/cluster-evidence/run-openshift.md`):
+clúster OpenShift 4.22 real** (evidencia en `../04-ai-agents/red-blue-agents/cluster-evidence/openshift-duel-run.md`):
 
 - Agente rojo (`red_agent.py`): genera los 2 PRs (`diffs/pr-01-obvious.diff`, `diffs/pr-02-poisoned.diff`).
 - Agente azul (`blue_agent.py`): revisor con clasificador + reglas, con la vulnerabilidad deliberada a inyección.
-- Pipeline real: **Tekton** (`../03-gitops/devsecops-pipeline/pipeline.yaml`) con el azul en un runner aislado + step merge/deploy.
+- Pipeline real: **Tekton** (`../03-gitops/devsecops-pipeline/pipeline-devsecops.yaml`) con el azul en un runner aislado + step merge/deploy.
 - Resultado verificado en el clúster: Acto 1 = **BLOCK** ✓, Acto 2/3 = **APPROVE** del PR envenenado ✗
   (el atacante gana a través del defensor), Acto 4 (endurecido) = **BLOCK** ✓.
 - Detalle de oro para la charla: la SCC `restricted-v2` de OpenShift asignó `runAsUser=1000980000`

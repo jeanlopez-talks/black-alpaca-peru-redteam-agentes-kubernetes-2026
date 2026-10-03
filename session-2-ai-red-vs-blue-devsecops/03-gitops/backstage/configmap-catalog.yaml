@@ -45,7 +45,7 @@ data:
         verify y deploy GitOps. Kyverno frena el deploy sin aprobacion humana.
       annotations:
         # Plugin Argo CD: la Application que sincroniza la app de ejemplo del duelo.
-        argocd/app-name: duel-sample-app
+        argocd/app-name: ai-red-vs-blue-devsecops-sample-app
         # Plugin Tekton + kubernetes: descubre PipelineRun/TaskRun por esta id.
         tekton.dev/cicd: 'true'
         backstage.io/kubernetes-id: duel-devsecops

@@ -13,7 +13,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: isolation-postures
+  name: ai-agent-isolation-postures
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: black-alpaca-2026
@@ -39,7 +39,7 @@ spec:
             syncWave: "1"
   template:
     metadata:
-      name: "isolation-{{.posture}}"
+      name: "ai-agent-isolation-{{.posture}}"
       labels:
         app.kubernetes.io/part-of: black-alpaca-2026
         black-alpaca.session: "1-isolation"
@@ -48,10 +48,10 @@ spec:
       annotations:
         argocd.argoproj.io/sync-wave: "{{.syncWave}}"
     spec:
-      project: black-alpaca-isolation
+      project: ai-agent-isolation
       source:
         # AJUSTAR la URL al publicar el repo en GitHub.
-        repoURL: https://github.com/jeanpaul-lopez/black-alpaca-redteam-agentes-k8s.git
+        repoURL: https://github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026.git
         targetRevision: main
         # Cada postura es un overlay Kustomize bajo ../isolation-postures/<postura>.
         path: "session-1-ai-agent-isolation/03-gitops/isolation-postures/{{.posture}}"

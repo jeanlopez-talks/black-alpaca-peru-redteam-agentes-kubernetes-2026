@@ -16,7 +16,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: duel-backstage
+  name: ai-red-vs-blue-devsecops-backstage
   # Argo CD vanilla vive en el namespace `argocd` (no openshift-gitops).
   namespace: argocd
   labels:
@@ -25,11 +25,10 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: duel-devsecops
+  project: ai-red-vs-blue-devsecops
   source:
-    # PLACEHOLDER — AJUSTAR al remoto real de este repositorio (la charla aun no
-    # esta publicada). Mismo repoURL que la Application del duelo.
-    repoURL: https://github.com/jeanlopezdev/black-alpaca-peru-redteam-agentes-kubernetes-2026.git
+    # Mismo repoURL que la Application del pipeline.
+    repoURL: https://github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026.git
     targetRevision: main
     path: session-2-ai-red-vs-blue-devsecops/03-gitops/backstage
   destination:

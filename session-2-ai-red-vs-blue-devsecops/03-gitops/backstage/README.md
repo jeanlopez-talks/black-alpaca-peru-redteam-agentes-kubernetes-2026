@@ -43,7 +43,7 @@ Esa es la defensa en capas que la charla quiere mostrar.
 ```
 ../
   argocd/
-    application-backstage.yaml   # Application `duel-backstage` (ns argocd) -> backstage/
+    application-backstage.yaml   # Application `ai-red-vs-blue-devsecops-backstage` (ns argocd) -> backstage/
   backstage/
     namespace.yaml               # ns `backstage`
     rbac.yaml                    # SA + ClusterRole SOLO LECTURA (Tekton/K8s)
@@ -51,7 +51,7 @@ Esa es la defensa en capas que la charla quiere mostrar.
     configmap-catalog.yaml       # entidades del catálogo (System/Component/API)
     secret-integrations.yaml     # tokens Argo CD / K8s (PLACEHOLDERS)
     deployment.yaml              # Deployment + Service de Backstage
-    service-lb.yaml              # LoadBalancer MetalLB (10.0.10.66)
+    service-loadbalancer.yaml              # LoadBalancer MetalLB (10.0.10.66)
     kustomization.yaml           # kustomize raíz (incluye agent/)
     agent/                       # el agente DevSecOps (human-in-the-loop)
       serviceaccount.yaml        #   SA + ClusterRole SOLO LECTURA (Tekton/Argo CD)
@@ -73,9 +73,7 @@ kubectl apply -f ../argocd/application-backstage.yaml
 # 3) Argo CD sincroniza ./ -> crea ns backstage, Backstage y el agente.
 ```
 
-> **AJUSTAR `repoURL`**: en `application-backstage.yaml` es un *placeholder* (la
-> charla aún no está publicada). Cámbialo al remoto real del repo. Argo CD lee de
-> un repo Git accesible; no sincroniza desde un working dir local.
+> El repo es **privado**: Argo CD necesita credenciales de solo lectura registradas para este `repoURL`.
 
 ### Código del agente sin registry (paso manual)
 

@@ -72,7 +72,7 @@ Cada frontera siembra un **token canario** (`CANARY-<postura>-<frontera>`) y se 
 
 ### 4.4 Despliegue reproducible (GitOps)
 
-Argo CD (`../03-gitops/argocd/applicationset.yaml`) despliega una `Application` por postura desde
+Argo CD (`../03-gitops/argocd/applicationset-isolation-postures.yaml`) despliega una `Application` por postura desde
 `../03-gitops/isolation-postures/<postura>`. La postura `kata` depende del Sandboxed Containers Operator, instalado por
 `../03-gitops/argocd/application-sandboxed-containers.yaml` con sync-wave `-1`. Ver §7 para el runbook.
 
@@ -91,12 +91,12 @@ Ejecutados dentro del sandbox (uid 1000, `capabilities: drop ALL`, `allowPrivile
 | 7 | binario setuid | sin `chown` a root | bloqueado |
 | 8 | `/proc/1/root` | namespace de PID 1 de root | bloqueado |
 
-Script: `../04-attack-lab/privilege-escalation/escalation_probe.sh`. Resultados por postura en `../04-attack-lab/boundary-probes/results/`.
+Script: `../04-attack-lab/privilege-escalation/escalation-probe.sh`. Resultados por postura en `../04-attack-lab/boundary-probes/results/`.
 
 ## 6. Hallazgos incómodos (los resultados que importan)
 
 > **Estado:** estos son los hallazgos del estudio de referencia que el lab reproduce. La matriz con los
-> resultados **propios** se genera con `../04-attack-lab/boundary-probes/collect_results.sh` por postura (salida en `../04-attack-lab/boundary-probes/results/`).
+> resultados **propios** se genera con `../04-attack-lab/boundary-probes/collect-results.sh` por postura (salida en `../04-attack-lab/boundary-probes/results/`).
 > Mientras no se ejecute en el clúster, se presentan como hipótesis a confirmar, no como dato medido.
 
 - **Mediación de escritura de herramientas — se espera FALLO (posturas `ssh`, `kata`).** El harness reporta
@@ -125,15 +125,15 @@ cd ../../shared/classifier && python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt && python run_classifier.py
 
 # 2) Desplegar el lab con Argo CD (clúster OpenShift)
-oc apply -f ../03-gitops/argocd/appproject.yaml
+oc apply -f ../03-gitops/argocd/appproject-ai-agent-isolation.yaml
 oc apply -f ../03-gitops/argocd/application-sandboxed-containers.yaml   # instala Kata (reinicia workers)
-oc apply -f ../03-gitops/argocd/applicationset.yaml             # 4 posturas
+oc apply -f ../03-gitops/argocd/applicationset-isolation-postures.yaml             # 4 posturas
 
 # 3) Medir fronteras y escalada por postura
-../04-attack-lab/boundary-probes/collect_results.sh bare
-../04-attack-lab/boundary-probes/collect_results.sh bare-np
-../04-attack-lab/boundary-probes/collect_results.sh ssh
-../04-attack-lab/boundary-probes/collect_results.sh kata
+../04-attack-lab/boundary-probes/collect-results.sh bare
+../04-attack-lab/boundary-probes/collect-results.sh bare-np
+../04-attack-lab/boundary-probes/collect-results.sh ssh
+../04-attack-lab/boundary-probes/collect-results.sh kata
 # → genera ../04-attack-lab/boundary-probes/results/<postura>.json y ../04-lab/probes/results/matrix.md
 ```
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# escalation_probe.sh
+# escalation-probe.sh
 # -------------------
 # Se ejecuta DENTRO del pod sandbox (uid 1000, capabilities dropped) e intenta
 # los 8 vectores de escalada de privilegios de ../../../shared/lab-conventions.md, en orden.
@@ -14,7 +14,7 @@
 # Al final emite un bloque JSON con el detalle maquina-legible.
 #
 # NOTA: este script NO requiere kubectl/oc; se ejecuta ya dentro del contenedor.
-#       El helper run_against_pod.sh es quien lo inyecta via exec.
+#       El helper run-against-pod.sh es quien lo inyecta via exec.
 
 set -euo pipefail
 
@@ -85,7 +85,7 @@ run_capture() {
 }
 
 echo "==============================================================================="
-echo " escalation_probe — 8 vectores de escalada (uid=$(id -u) gid=$(id -g))"
+echo " escalation-probe — 8 vectores de escalada (uid=$(id -u) gid=$(id -g))"
 echo " host=$(hostname 2>/dev/null || echo '?')  fecha=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "==============================================================================="
 echo

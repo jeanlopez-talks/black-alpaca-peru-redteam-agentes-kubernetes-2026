@@ -286,9 +286,9 @@
         <tr><td>8</td><td><code>/proc/1/root</code></td><td>namespace de PID 1 es de root</td><td class="ok">bloqueado</td></tr>
       </tbody>
     </table>
-    <p class="dim" style="margin-top:.6rem;font-size:.9rem"><code>../04-attack-lab/privilege-escalation/escalation_probe.sh</code> — resultados por postura en <code>../04-attack-lab/boundary-probes/results/</code></p>
+    <p class="dim" style="margin-top:.6rem;font-size:.9rem"><code>../04-attack-lab/privilege-escalation/escalation-probe.sh</code> — resultados por postura en <code>../04-attack-lab/boundary-probes/results/</code></p>
     <aside class="notes" data-time="20:00 – 32:00 (demo larga)">
-      Corre el escalation_probe.sh en vivo contra el sandbox. No basta con decir "bloqueado": explica el
+      Corre el escalation-probe.sh en vivo contra el sandbox. No basta con decir "bloqueado": explica el
       PORQUÉ de kernel en cada caso — capabilities efectivas dropeadas, namespaces de propiedad root. El
       mensaje: estos 8 SÍ se contienen con config estándar de pod endurecido. Pero NO te relajes: el
       siguiente slide muestra lo que NO se contiene.
@@ -377,13 +377,13 @@ cd ../../shared/classifier
 python run_classifier.py
 
 # lab completo (OpenShift + Argo CD)
-oc apply -f ../03-gitops/argocd/appproject.yaml
+oc apply -f ../03-gitops/argocd/appproject-ai-agent-isolation.yaml
 oc apply -f ../03-gitops/argocd/\
   application-sandboxed-containers.yaml
 oc apply -f ../03-gitops/argocd/\
-  applicationset.yaml
+  applicationset-isolation-postures.yaml
 
-../04-attack-lab/boundary-probes/collect_results.sh &lt;postura&gt;</div>
+../04-attack-lab/boundary-probes/collect-results.sh &lt;postura&gt;</div>
         <div class="box">Repo público, GitOps, 100% reproducible.</div>
       </div>
     </div>

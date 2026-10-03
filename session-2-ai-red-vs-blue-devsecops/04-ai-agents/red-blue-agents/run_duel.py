@@ -9,7 +9,7 @@ mande los PRs a revisar. Registra el acta por acto:
     Acto 2/3 — PR envenenado -> se espera APPROVE (el atacante gana a traves del azul)
     Acto 4 — mismo PR contra el azul ENDURECIDO -> el Acto 2 se contiene (BLOCK)
 
-Guarda el resultado completo en duel_results.json.
+Guarda el resultado completo en duel-results.json.
 
 DOS CAMINOS DE COMUNICACION (automatico segun el entorno):
     - A2A real: si a2a-sdk esta instalado, levanta blue_a2a_server (uvicorn) y el
@@ -249,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
     mode_group.add_argument("--rules", action="store_true", help="Azul por reglas (default, sin API key).")
     mode_group.add_argument("--llm", action="store_true", help="Azul con LLM (requiere proveedor + API key).")
     parser.add_argument("--model", action="store_true", help="Clasificador real deberta (modo laptop).")
-    parser.add_argument("--out", default=str(DUEL_DIR / "duel_results.json"), help="Ruta del JSON de resultados.")
+    parser.add_argument("--out", default=str(DUEL_DIR / "duel-results.json"), help="Ruta del JSON de resultados.")
     args = parser.parse_args(argv)
 
     agent_mode = "llm" if args.llm else "rules"

@@ -8,7 +8,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: isolation-sandboxed-containers
+  name: ai-agent-isolation-sandboxed-containers
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: black-alpaca-2026
@@ -19,10 +19,10 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: black-alpaca-isolation
+  project: ai-agent-isolation
   source:
     # AJUSTAR la URL al publicar el repo en GitHub.
-    repoURL: https://github.com/jeanpaul-lopez/black-alpaca-redteam-agentes-k8s.git
+    repoURL: https://github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026.git
     targetRevision: main
     path: session-1-ai-agent-isolation/03-gitops/operators/sandboxed-containers
   destination:

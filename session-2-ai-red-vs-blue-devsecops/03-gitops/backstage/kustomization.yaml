@@ -30,6 +30,6 @@ resources:
   - configmap-catalog.yaml
   - secret-integrations.yaml
   - deployment.yaml
-  - service-lb.yaml
+  - service-loadbalancer.yaml
   # El agente (human-in-the-loop) como sub-kustomize.
   - agent

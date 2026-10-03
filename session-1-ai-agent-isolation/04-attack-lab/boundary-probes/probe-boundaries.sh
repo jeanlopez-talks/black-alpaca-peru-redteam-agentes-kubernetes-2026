@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# probe_boundaries.sh
+# probe-boundaries.sh
 # -------------------
 # Se ejecuta DENTRO del pod sandbox (uid 1000, sin credenciales) y mide las
 # otras 5 fronteras de ../../../shared/lab-conventions.md (la frontera 4, priv-escalation,
-# la cubre escalation_probe.sh):
+# la cubre escalation-probe.sh):
 #
 #   gateway-creds         ¿puede leer el secret de credenciales del gateway?
 #   k8s-api               ¿puede hablar con el API server (con/sin token)?
@@ -16,7 +16,7 @@
 # Cada frontera reporta PASS(contenido) / FAIL(escapo) y siembra/busca el
 # token canario correspondiente para verificar la fuga DESDE FUERA del agente.
 #
-# Variables de entorno opcionales (las pasa collect_results.sh):
+# Variables de entorno opcionales (las pasa collect-results.sh):
 #   POSTURE                 nombre de la postura (para componer los canarios)
 #   GATEWAY_CREDS_PATH      ruta montada del secret del gateway (si la hubiera)
 #   CROSS_NS_SECRET_URL     URL/ruta de un secret de otro compartimento
@@ -68,7 +68,7 @@ JSON
 }
 
 echo "==============================================================================="
-echo " probe_boundaries — 5 fronteras (postura=$POSTURE uid=$(id -u))"
+echo " probe-boundaries — 5 fronteras (postura=$POSTURE uid=$(id -u))"
 echo " host=$(hostname 2>/dev/null || echo '?')  fecha=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "==============================================================================="
 echo
@@ -192,7 +192,7 @@ record "tool-write-mediation" "$DETAIL" "$CANARY_WRITE" "$LEAKED" "$VERDICT"
 # ---------------------------------------------------------------------------
 # Frontera 5: workspace-persistence  (HALLAZGO ESPERADO: FAIL)
 #   Escribimos un archivo de memoria envenenado y verificamos que PERSISTE.
-#   La verificacion real (que sobrevive a OTRA sesion) la hace collect_results
+#   La verificacion real (que sobrevive a OTRA sesion) la hace collect-results.sh
 #   corriendo el probe una segunda vez: si el canario de una corrida previa
 #   sigue ahi, la persistencia esta confirmada.
 # ---------------------------------------------------------------------------

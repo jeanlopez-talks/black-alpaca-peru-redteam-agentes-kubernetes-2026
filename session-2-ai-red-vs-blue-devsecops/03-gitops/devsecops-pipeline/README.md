@@ -214,11 +214,10 @@ atacante logra desplegar"** cuando el gate del azul es engañado (Acto 3).
 **`argocd`** que apunta a `sample-app` y despliega en `openclaw-duel`.
 
 - **Sync manual por defecto** (demo controlada): la Application queda `OutOfSync` y
-  se sincroniza a mano (`argocd app sync duel-sample-app` o el botón Sync).
+  se sincroniza a mano (`argocd app sync ai-red-vs-blue-devsecops-sample-app` o el botón Sync).
 - **Auto-deploy del Acto 3** (radio de explosión real — *lo aprobado se despliega
   solo*): descomenta el bloque `syncPolicy.automated` de la Application.
-- **`repoURL` es un PLACEHOLDER**: ajústalo al remoto real de este repo. Argo CD
-  necesita un repo Git accesible; no sincroniza desde un working dir local.
+- El repo es **privado**: Argo CD necesita credenciales de solo lectura registradas para este `repoURL`.
 
 ## Recursos (`kustomize build .` → 14 objetos + `duel-agent-src` y Kyverno fuera de kustomize)
 
@@ -227,10 +226,10 @@ atacante logra desplegar"** cuando el gate del azul es engañado (Acto 3).
 | `namespace.yaml` | namespace `openclaw-duel`. |
 | `networkpolicy.yaml` | egress deny-by-default + DNS; egress al LLM local (ns `inference`, TCP 8000); **egress HTTPS (443) para las tasks del supply chain** (`build`, `sast`, `sbom`, `trivy-scan`, `sign`, `verify`, `gate-blue`): pull de imágenes, reglas de semgrep, DB de Trivy, pip. |
 | `serviceaccount.yaml` | `duel-runner`, **sin** RBAC de merge ni token de API (no puede poner la anotación de aprobación-humana). |
-| `secret-llm.yaml` | Secret con la key **dummy** del LLM local + ConfigMap `duel-llm-config`. |
+| `llm-config.yaml` | Secret con la key **dummy** del LLM local + ConfigMap `duel-llm-config`. |
 | _(sin archivo)_ `duel-cosign-keys` | par de claves cosign; **no se versiona**. Se crea con `cosign generate-key-pair k8s://openclaw-duel/duel-cosign-keys` (ver «Clave cosign»). |
-| `pipeline.yaml` | `Pipeline` `duel-devsecops`: sast → build → sbom → trivy-scan → sign → gate-blue → verify → deploy-gitops. |
-| `pipelinerun.yaml` | dispara el pipeline contra `pr-02-poisoned.diff` (modo `rules`, `sast-blocking=false`, `trivy-severity=HIGH,CRITICAL`) con un workspace PVC RWX (`nfs-writable`). |
+| `pipeline-devsecops.yaml` | `Pipeline` `duel-devsecops`: sast → build → sbom → trivy-scan → sign → gate-blue → verify → deploy-gitops. |
+| `pipelinerun-poisoned-pr.yaml` | dispara el pipeline contra `pr-02-poisoned.diff` (modo `rules`, `sast-blocking=false`, `trivy-severity=HIGH,CRITICAL`) con un workspace PVC RWX (`nfs-writable`). |
 | `application-sample-app.yaml` | `Application` de Argo CD (ns `argocd`) que despliega la app de ejemplo. |
 | `sample-app/` | la app de ejemplo (fuente + ConfigMap/Deployment/Service). |
 | `sast-input/deploy-notes.md` | entrada realista para la etapa SAST (el config del PR envenenado). |
@@ -270,7 +269,7 @@ tkn pipelinerun logs duel-devsecops-poisoned -n openclaw-duel -f
 
 # 6) Promover por GitOps (etapa 8): registrar/sincronizar la Application
 kubectl apply -f application-sample-app.yaml
-argocd app sync duel-sample-app   # o el botón Sync en la consola de Argo CD
+argocd app sync ai-red-vs-blue-devsecops-sample-app   # o el botón Sync en la consola de Argo CD
 ```
 
 Resultado esperado (Acto 2/3 + defensa en capas):
@@ -301,15 +300,15 @@ Para el Acto 1 (el azul bloquea y `deploy-gitops` se salta), cambia `pr-diff` a
 ```bash
 # El Secret/ConfigMap ya apuntan al vLLM local. Basta con poner agent-mode=llm:
 kubectl -n openclaw-duel delete pipelinerun duel-devsecops-poisoned --ignore-not-found
-# edita pipelinerun.yaml -> params agent-mode: llm, y reaplica:
-kubectl apply -f pipelinerun.yaml
+# edita pipelinerun-poisoned-pr.yaml -> params agent-mode: llm, y reaplica:
+kubectl apply -f pipelinerun-poisoned-pr.yaml
 ```
 
 ## Volver a correr el duelo
 
 ```bash
 kubectl delete pipelinerun duel-devsecops-poisoned -n openclaw-duel --ignore-not-found
-kubectl apply -f pipelinerun.yaml
+kubectl apply -f pipelinerun-poisoned-pr.yaml
 # Si tocaste ../../04-ai-agents/red-blue-agents/*.py, regenera el ConfigMap del código antes:
 kubectl -n openclaw-duel create configmap duel-agent-src \
   --from-file=../../04-ai-agents/red-blue-agents/ --dry-run=client -o yaml | kubectl apply -f -

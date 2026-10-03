@@ -92,7 +92,7 @@ kubectl apply -k session-2-ai-red-vs-blue-devsecops/03-gitops/devsecops-pipeline
 
 # Las 4 posturas con Argo CD — sesión 1
 kubectl apply -f session-1-ai-agent-isolation/03-gitops/argocd/
-for p in bare bare-np ssh kata; do session-1-ai-agent-isolation/04-attack-lab/boundary-probes/collect_results.sh "$p"; done
+for p in bare bare-np ssh kata; do session-1-ai-agent-isolation/04-attack-lab/boundary-probes/collect-results.sh "$p"; done
 ```
 
 ## Crédito y honestidad

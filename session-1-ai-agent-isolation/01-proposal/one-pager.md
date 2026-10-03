@@ -2,7 +2,7 @@
 ## Red-teaming de agentes de IA en Kubernetes — Black Alpaca 2026
 
 **Jean Paul López** · Senior Consultant, Red Hat · Lima, Perú
-Repositorio del laboratorio (reproducible, GitOps): `https://github.com/jeanpaul-lopez/black-alpaca-redteam-agentes-k8s`
+Repositorio del laboratorio (reproducible, GitOps): `https://github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026`
 
 ---
 
@@ -52,7 +52,7 @@ binario setuid (sin `chown` a root) · `/proc/1/root` (namespace de PID 1 es de 
 ### Los hallazgos incómodos (hipótesis a confirmar en el lab propio)
 
 > Estos son los hallazgos del estudio de referencia (Roy Belio, Red Hat) que el lab reproduce. La matriz
-> con los resultados propios se ejecuta con `../04-attack-lab/boundary-probes/collect_results.sh` y se publica en `../04-attack-lab/boundary-probes/results/`.
+> con los resultados propios se ejecuta con `../04-attack-lab/boundary-probes/collect-results.sh` y se publica en `../04-attack-lab/boundary-probes/results/`.
 
 - **Mediación de escritura de herramientas: se espera que FALLE en `ssh` y `kata`.** El harness reporta
   "rechazado", pero `bash` escribe el archivo igual en el mismo contenedor.

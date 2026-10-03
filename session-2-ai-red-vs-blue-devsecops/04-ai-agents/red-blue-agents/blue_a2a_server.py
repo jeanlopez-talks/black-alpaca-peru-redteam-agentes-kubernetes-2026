@@ -8,7 +8,7 @@ Arquitectura del duelo (ver ../../01-proposal/concept.md):
     reglas) y devuelve el veredicto APPROVE/BLOCK.
 
     En Tekton, este server corre como un contenedor que escucha, y el step del
-    rojo lo consume por A2A (ver ../../03-gitops/devsecops-pipeline/pipeline.yaml).
+    rojo lo consume por A2A (ver ../../03-gitops/devsecops-pipeline/pipeline-devsecops.yaml).
 
 Contrato A2A:
     - AgentCard publicada en /.well-known/agent-card.json (ruta estandar A2A, la

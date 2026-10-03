@@ -14,15 +14,14 @@
 #     sincroniza a mano (`argocd app sync` / boton Sync) para no desplegar sin
 #     querer. Para modelar el auto-deploy REAL del Acto 3 (lo aprobado se
 #     despliega solo), descomenta el bloque `automated` de abajo.
-#   - El `repoURL` es un PLACEHOLDER: ajustalo al remoto real de este repo. Argo
-#     CD necesita un repo Git accesible; no sincroniza desde un working dir local.
+#   - El repo es privado: Argo CD necesita credenciales de solo lectura para el repoURL.
 #   - El pipeline Tekton (etapa deploy-gitops) muestra el `kubectl apply` de ESTA
 #     Application pero NO lo ejecuta (el runner no tiene RBAC); el apply lo hace
 #     el operador y el sync efectivo lo hace Argo CD.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: duel-sample-app
+  name: ai-red-vs-blue-devsecops-sample-app
   # Argo CD vanilla vive en el namespace `argocd` (no openshift-gitops).
   namespace: argocd
   labels:
@@ -32,10 +31,9 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
+  project: ai-red-vs-blue-devsecops
   source:
-    # PLACEHOLDER: ajustar al remoto real de este repositorio.
-    repoURL: https://github.com/jeanlopezdev/black-alpaca-peru-redteam-agentes-kubernetes-2026.git
+    repoURL: https://github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026.git
     targetRevision: main
     path: session-2-ai-red-vs-blue-devsecops/03-gitops/devsecops-pipeline/sample-app
   destination:

@@ -4,7 +4,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: duel-devsecops
+  name: ai-red-vs-blue-devsecops
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: black-alpaca-2026
@@ -17,9 +17,9 @@ spec:
     (pipeline Tekton de 8 etapas con supply chain) + portal Backstage + agente
     interactivo. Todo gestionado por GitOps en un clúster k3s.
 
-  # Repo de la charla. AJUSTAR al publicar el repo (hoy es placeholder).
+  # Repo de la charla.
   sourceRepos:
-    - https://github.com/jeanpaul-lopez/black-alpaca-redteam-agentes-k8s.git
+    - https://github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026.git
 
   # Namespaces destino de esta propuesta.
   destinations:

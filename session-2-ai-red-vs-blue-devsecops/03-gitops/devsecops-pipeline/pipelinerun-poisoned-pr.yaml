@@ -9,7 +9,7 @@
 # name fijo + sync-options Replace=true: los PipelineRun son inmutables, asi que
 # Argo CD lo reemplaza (borra+crea) en cada sync para re-ejecutar el duelo.
 # Para disparar runs ad-hoc fuera de Argo CD:
-#     kubectl create -f pipelinerun.yaml   (con generateName en vez de name).
+#     kubectl create -f pipelinerun-poisoned-pr.yaml   (con generateName en vez de name).
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:

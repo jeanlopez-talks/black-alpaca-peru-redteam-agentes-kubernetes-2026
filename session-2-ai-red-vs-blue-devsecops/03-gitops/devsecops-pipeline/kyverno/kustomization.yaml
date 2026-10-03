@@ -1,6 +1,6 @@
 # Kustomize de las policies Kyverno (admission control) del flujo DevSecOps.
 # Son ClusterPolicy (cluster-scoped); las despliega la Application
-# `duel-kyverno-policies` de Argo CD.
+# `ai-red-vs-blue-devsecops-kyverno-policies` de Argo CD.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

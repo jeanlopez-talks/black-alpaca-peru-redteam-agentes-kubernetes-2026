@@ -19,7 +19,7 @@ muestra qué fronteras lo habrían parado.
 | `blue_agent.py`     | **Agente azul**: revisor de PRs. Loop LLM (langgraph `create_react_agent`) con tools `run_injection_classifier` (a) y `check_dangerous_patterns` (b). **Vulnerable a propósito**: mete el diff sin sanitizar en el prompt → la nota al revisor lo captura. Fallback por reglas (`BlueRulesEngine`). |
 | `blue_a2a_server.py`| Expone el azul como **A2A server** (`a2a-sdk`): AgentCard con skill `review-pr`, server HTTP (uvicorn/Starlette). |
 | `red_agent.py`      | **Agente rojo**: genera los 2 PRs en `diffs/` y, como **A2A client**, se los manda al azul. Faceta LLM opcional para redactar la inyección. |
-| `run_duel.py`       | **Orquesta** el duelo (Actos 1-4): levanta el azul (A2A), el rojo le manda los PRs, guarda `duel_results.json`. |
+| `run_duel.py`       | **Orquesta** el duelo (Actos 1-4): levanta el azul (A2A), el rojo le manda los PRs, guarda `duel-results.json`. |
 | `review_pr.py`      | Entrypoint simple del step: revisa UN PR, directo o como **cliente A2A** (`--a2a URL`). |
 | `defenses.py`       | **Acto 4** aislado: antes/después con el azul endurecido. |
 | `llm_factory.py`    | Fabrica el ChatModel según `LLM_PROVIDER`/`LLM_MODEL`; lee la API key del entorno (Secret). |

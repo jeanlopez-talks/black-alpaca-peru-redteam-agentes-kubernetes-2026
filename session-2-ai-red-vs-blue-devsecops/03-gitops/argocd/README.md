@@ -6,16 +6,16 @@ GitOps de la propuesta 2. Argo CD vive en el namespace `argocd` (k3s vanilla).
 
 | Archivo | Recurso | Qué despliega |
 |---------|---------|---------------|
-| `appproject.yaml` | AppProject `duel-devsecops` | acota repos/namespaces/recursos de esta propuesta |
-| `application-duel-pipeline.yaml` | Application `duel-pipeline` | pipeline Tekton de 8 etapas + supply chain + sample-app |
-| `application-kyverno-policies.yaml` | Application `duel-kyverno-policies` | las ClusterPolicy de admission (sync-wave -1) |
-| `application-backstage.yaml` | Application `duel-backstage` | config de Backstage de la charla + agente interactivo |
+| `appproject-ai-red-vs-blue-devsecops.yaml` | AppProject `ai-red-vs-blue-devsecops` | acota repos/namespaces/recursos de esta propuesta |
+| `application-devsecops-pipeline.yaml` | Application `ai-red-vs-blue-devsecops-pipeline` | pipeline Tekton de 8 etapas + supply chain + sample-app |
+| `application-kyverno-policies.yaml` | Application `ai-red-vs-blue-devsecops-kyverno-policies` | las ClusterPolicy de admission (sync-wave -1) |
+| `application-backstage.yaml` | Application `ai-red-vs-blue-devsecops-backstage` | config de Backstage de la charla + agente interactivo |
 
 ## Orden (sync-waves)
 
 ```
--1  duel-kyverno-policies   (las policies deben existir antes del deploy)
- 0  duel-pipeline, duel-backstage
+-1  ai-red-vs-blue-devsecops-kyverno-policies   (las policies deben existir antes del deploy)
+ 0  ai-red-vs-blue-devsecops-pipeline, ai-red-vs-blue-devsecops-backstage
 ```
 
 ## Dependencias de PLATAFORMA (en el repo del homelab, no aquí)
@@ -31,16 +31,16 @@ Ver `../../../shared/gitops-architecture.md` para la separación plataforma (hom
 ## Desplegar
 
 ```bash
-kubectl apply -f appproject.yaml
+kubectl apply -f appproject-ai-red-vs-blue-devsecops.yaml
 kubectl apply -f application-kyverno-policies.yaml
-kubectl apply -f application-duel-pipeline.yaml
+kubectl apply -f application-devsecops-pipeline.yaml
 kubectl apply -f application-backstage.yaml
 ```
 
-> La `repoURL` es placeholder al repo de la charla — ajustar al publicarlo para que Argo CD lo lea.
+> El repo es **privado**: Argo CD necesita credenciales de solo lectura registradas para este `repoURL`.
 
 ## Nomenclatura
 
-- AppProject: `duel-devsecops`
+- AppProject: `ai-red-vs-blue-devsecops`
 - Applications: `duel-<component>` (kebab-case, inglés)
 - Labels estándar: `app.kubernetes.io/part-of: black-alpaca-2026`, `black-alpaca.session: "2-duel"`

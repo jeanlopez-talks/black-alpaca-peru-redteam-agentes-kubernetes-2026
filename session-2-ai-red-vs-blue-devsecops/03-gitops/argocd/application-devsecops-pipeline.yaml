@@ -5,7 +5,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: duel-pipeline
+  name: ai-red-vs-blue-devsecops-pipeline
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: black-alpaca-2026
@@ -13,10 +13,9 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: duel-devsecops
+  project: ai-red-vs-blue-devsecops
   source:
-    # AJUSTAR al publicar el repo de la charla.
-    repoURL: https://github.com/jeanpaul-lopez/black-alpaca-redteam-agentes-k8s.git
+    repoURL: https://github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026.git
     targetRevision: main
     path: session-2-ai-red-vs-blue-devsecops/03-gitops/devsecops-pipeline
   destination:

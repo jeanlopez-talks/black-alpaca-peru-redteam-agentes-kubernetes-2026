@@ -18,11 +18,11 @@ los 8 vectores con su mecanismo de kernel, los tokens canario) y
 ```
 04-attack-lab/
   privilege-escalation/        los 8 vectores de escalada de privilegios
-    escalation_probe.sh   (corre DENTRO del pod sandbox)
-    run_against_pod.sh    (helper: kubectl/oc exec a una postura)
+    escalation-probe.sh   (corre DENTRO del pod sandbox)
+    run-against-pod.sh    (helper: kubectl/oc exec a una postura)
   boundary-probes/            las otras 5 fronteras + orquestacion
-    probe_boundaries.sh   (corre DENTRO del pod sandbox)
-    collect_results.sh    (orquesta todo y genera results/)
+    probe-boundaries.sh   (corre DENTRO del pod sandbox)
+    collect-results.sh    (orquesta todo y genera results/)
     results/              (generado: <postura>.json + matrix.md)
 ```
 
@@ -56,16 +56,16 @@ oc get pods -n openclaw-ssh-sandbox -l app=sandbox
 
 ```bash
 cd privilege-escalation
-./run_against_pod.sh ssh          # 8 vectores de escalada contra la postura ssh
+./run-against-pod.sh ssh          # 8 vectores de escalada contra la postura ssh
 ```
 
 ### Paso 4 — Recoger todo y generar la matriz
 
 ```bash
 cd boundary-probes
-./collect_results.sh              # las 4 posturas
+./collect-results.sh              # las 4 posturas
 # o un subconjunto:
-./collect_results.sh ssh kata
+./collect-results.sh ssh kata
 ```
 
 Genera `boundary-probes/results/<postura>.json` (detalle maquina-legible por postura) y
@@ -83,7 +83,7 @@ Genera `boundary-probes/results/<postura>.json` (detalle maquina-legible por pos
   - `tool-write-mediation` — el harness dice "rechazado" pero `bash` escribe
     igual en el contenedor.
   - `workspace-persistence` — un archivo de memoria envenenado sobrevive a la
-    sesion. `collect_results.sh` corre el probe DOS veces: si el canario de la
+    sesion. `collect-results.sh` corre el probe DOS veces: si el canario de la
     primera pasada sigue en disco en la segunda, la persistencia queda
     confirmada desde fuera del agente.
 

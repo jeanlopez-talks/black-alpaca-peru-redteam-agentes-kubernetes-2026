@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 #
-# run_against_pod.sh <postura>
+# run-against-pod.sh <postura>
 # ----------------------------
-# Helper que ejecuta escalation_probe.sh DENTRO del pod sandbox de una postura.
+# Helper que ejecuta escalation-probe.sh DENTRO del pod sandbox de una postura.
 # Detecta oc o kubectl, resuelve el namespace sandbox de la postura segun
 # ../../../shared/lab-conventions.md, inyecta el probe via stdin a `exec` y recoge el resultado.
 #
 # Posturas validas: bare | bare-np | ssh | kata
 #
 # Uso:
-#   ./run_against_pod.sh ssh
-#   ./run_against_pod.sh kata > /tmp/kata-escalation.txt
+#   ./run-against-pod.sh ssh
+#   ./run-against-pod.sh kata > /tmp/kata-escalation.txt
 #
 # Salida: el reporte legible + el bloque JSON del probe en stdout.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROBE="$SCRIPT_DIR/escalation_probe.sh"
+PROBE="$SCRIPT_DIR/escalation-probe.sh"
 
 # ---------------------------------------------------------------------------
 # 1. Validar argumento
@@ -96,7 +96,7 @@ fi
 #    'exec -i ... -- bash -s' lee el script desde stdin: evita copiar archivos
 #    y funciona aunque el contenedor no tenga el probe montado.
 # ---------------------------------------------------------------------------
-echo "[*] ejecutando escalation_probe.sh dentro de $POD ..." >&2
+echo "[*] ejecutando escalation-probe.sh dentro de $POD ..." >&2
 echo >&2
 
 "$KCTL" -n "$SANDBOX_NS" exec -i "$POD" -- bash -s < "$PROBE"

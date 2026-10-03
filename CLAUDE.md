@@ -16,7 +16,7 @@ pipelines, imágenes, variables, etc., usar SIEMPRE una nomenclatura **correcta,
   Mismo concepto → mismo nombre en todo el repo. Prefijos de orden solo si aportan (`01-`, `02-`).
 - **Recursos k8s**: namespaces y objetos en kebab-case inglés; labels estándar
   `app.kubernetes.io/part-of`, `app.kubernetes.io/component`. Applications de Argo CD con nombre
-  `<project>-<component>` (ej. `duel-pipeline`, `duel-backstage`).
+  `<project>-<component>` (ej. `ai-red-vs-blue-devsecops-pipeline`, `ai-red-vs-blue-devsecops-backstage`).
 - **Nada de espacios, acentos, mayúsculas ni caracteres especiales** en nombres de archivos/carpetas.
 
 > Esta regla aplica a todo lo que se cree de aquí en adelante. Si encuentras nombres viejos que no la
@@ -38,7 +38,7 @@ session-1-ai-agent-isolation/      PROPUESTA 1 — agente como víctima (aislami
   01-proposal/            sessionize-proposal.md, technical-paper.md, one-pager.md (→ PDF adjunto)
   02-slides/              index.html
   03-gitops/              argocd/, operators/sandboxed-containers/, isolation-postures/{bare,bare-np,ssh,kata}/
-  04-attack-lab/          privilege-escalation/ (8 vectores), boundary-probes/ (fronteras + collect_results.sh → results/)
+  04-attack-lab/          privilege-escalation/ (8 vectores), boundary-probes/ (fronteras + collect-results.sh → results/)
 session-2-ai-red-vs-blue-devsecops/           PROPUESTA 2 — duelo rojo vs azul en pipeline DevSecOps
   01-proposal/            sessionize-proposal.md, concept.md (diseño en 4 actos)
   02-slides/              index.html

@@ -5,7 +5,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: black-alpaca-isolation
+  name: ai-agent-isolation
   # El proyecto DEBE vivir en el namespace donde corre Argo CD (OpenShift GitOps).
   namespace: openshift-gitops
   labels:
@@ -21,9 +21,9 @@ spec:
     Despliega las 4 posturas de aislamiento (bare, bare-np, ssh, kata) y el
     operator de Sandboxed Containers para la postura kata.
 
-  # Repos permitidos como fuente. AJUSTAR al publicar el repo en GitHub.
+  # Repos permitidos como fuente: el repo de la charla.
   sourceRepos:
-    - https://github.com/jeanpaul-lopez/black-alpaca-redteam-agentes-k8s.git
+    - https://github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026.git
 
   # Destinos permitidos: solo el cluster local (in-cluster) y, de forma amplia,
   # cualquier namespace. Se restringe por nombre de servidor, no por namespace,

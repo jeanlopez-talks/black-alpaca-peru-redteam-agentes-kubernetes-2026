@@ -4,7 +4,7 @@
 # `argocd`, NO openshift-gitops).
 #
 # El pipeline Tekton 'duel-devsecops' encadena: BUILD -> SCAN -> GATE(azul) ->
-# DEPLOY GitOps (Argo CD). Ver pipeline.yaml y README.md.
+# DEPLOY GitOps (Argo CD). Ver pipeline-devsecops.yaml y README.md.
 #
 # DIFERENCIA CLAVE vs OpenShift (punto de charla):
 #   - OpenShift tenia BuildConfig + ImageStream + registry interno para construir
@@ -34,12 +34,12 @@ resources:
   - namespace.yaml
   - networkpolicy.yaml
   - serviceaccount.yaml
-  - secret-llm.yaml
+  - llm-config.yaml
   # duel-cosign-keys NO se versiona: se crea fuera de Git con
   #   cosign generate-key-pair k8s://openclaw-duel/duel-cosign-keys
   # (ver README.md, seccion "Clave cosign").
-  - pipeline.yaml
-  - pipelinerun.yaml
+  - pipeline-devsecops.yaml
+  - pipelinerun-poisoned-pr.yaml
   # NOTA: kyverno/ NO va aqui. Son ClusterPolicy (cluster-scoped) + el install.yaml
   # de Kyverno; aplicarlos con el namespace global (openclaw-duel) de este kustomize
   # romperia su alcance. Se aplican por separado (ver kyverno/README.md).
@@ -62,7 +62,7 @@ resources:
 # documentado (ver README.md, seccion "Codigo de los agentes sin registry"):
 #     kubectl -n openclaw-duel create configmap duel-agent-src \
 #       --from-file=../../04-ai-agents/red-blue-agents/ --dry-run=client -o yaml | kubectl apply -f -
-# El pipeline lo monta como volumen (ver pipeline.yaml, etapa gate-blue).
+# El pipeline lo monta como volumen (ver pipeline-devsecops.yaml, etapa gate-blue).
 # En k3s vanilla SIN registry, montar el codigo por ConfigMap es la opcion
 # pragmatica (al reves que en OpenShift, donde habia BuildConfig + registry interno).
 configMapGenerator:

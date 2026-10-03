@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# collect_results.sh [postura...]
+# collect-results.sh [postura...]
 # -------------------------------
-# Orquesta el laboratorio: corre probe_boundaries.sh + escalation_probe.sh
+# Orquesta el laboratorio: corre probe-boundaries.sh + escalation-probe.sh
 # contra una o varias posturas (via kubectl exec) y genera:
 #   results/<postura>.json   resultado maquina-legible por postura
 #   results/matrix.md        tabla comparativa (4 posturas x 6 fronteras)
 #
 # Sin argumentos, procesa las 4 posturas: bare bare-np ssh kata.
-# Admite un subconjunto:  ./collect_results.sh ssh kata
+# Admite un subconjunto:  ./collect-results.sh ssh kata
 #
 # Detecta oc o kubectl. Corre el probe de fronteras DOS veces por postura para
 # verificar la persistencia de workspace (si el canario sobrevive a la 2a corrida,
@@ -18,8 +18,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAB_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BOUNDARIES_PROBE="$SCRIPT_DIR/probe_boundaries.sh"
-ESCALATION_PROBE="$LAB_DIR/privilege-escalation/escalation_probe.sh"
+BOUNDARIES_PROBE="$SCRIPT_DIR/probe-boundaries.sh"
+ESCALATION_PROBE="$LAB_DIR/privilege-escalation/escalation-probe.sh"
 RESULTS_DIR="$SCRIPT_DIR/results"
 
 ALL_POSTURES=(bare bare-np ssh kata)
@@ -93,14 +93,14 @@ for POSTURE in "${POSTURES[@]}"; do
   echo "[*] pod objetivo: $POD"
 
   # --- Escalada (vector priv-escalation) ---
-  echo "[*] corriendo escalation_probe.sh ..."
+  echo "[*] corriendo escalation-probe.sh ..."
   ESC_OUT="$("$KCTL" -n "$NS" exec -i "$POD" -- bash -s < "$ESCALATION_PROBE" 2>/dev/null || true)"
   ESC_JSON="$(printf '%s\n' "$ESC_OUT" | extract_json)"
 
   # --- Fronteras: corremos DOS veces para verificar persistencia ---
-  echo "[*] corriendo probe_boundaries.sh (pasada 1/2) ..."
+  echo "[*] corriendo probe-boundaries.sh (pasada 1/2) ..."
   "$KCTL" -n "$NS" exec -i "$POD" --env="POSTURE=$POSTURE" -- bash -s < "$BOUNDARIES_PROBE" >/dev/null 2>&1 || true
-  echo "[*] corriendo probe_boundaries.sh (pasada 2/2, verifica persistencia) ..."
+  echo "[*] corriendo probe-boundaries.sh (pasada 2/2, verifica persistencia) ..."
   BND_OUT="$("$KCTL" -n "$NS" exec -i "$POD" --env="POSTURE=$POSTURE" -- bash -s < "$BOUNDARIES_PROBE" 2>/dev/null || true)"
   BND_JSON="$(printf '%s\n' "$BND_OUT" | extract_json)"
 

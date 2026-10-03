@@ -89,7 +89,7 @@ Español
 > El CFP da **preferencia explícita** a quien adjunta material. Como todo el contenido vive en un repo público,
 > el adjunto es un **PDF corto de 1 página** (portada + resumen + QR/link al repo) exportado desde `one-pager.md` (misma carpeta).
 > El repo tiene el documento técnico completo (README + docs/) y el laboratorio GitOps reproducible.
-> Repo: `https://github.com/jeanpaul-lopez/black-alpaca-redteam-agentes-k8s` *(ajustar al publicar)*
+> Repo: `https://github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026`
 
 ### Co-speakers
 ```

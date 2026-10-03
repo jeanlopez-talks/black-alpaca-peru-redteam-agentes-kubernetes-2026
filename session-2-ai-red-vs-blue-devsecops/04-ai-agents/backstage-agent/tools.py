@@ -255,7 +255,7 @@ def _mock_pipeline() -> PipelineSummary:
 
 def _mock_argocd_app() -> dict[str, Any]:
     return {
-        "name": "duel-sample-app",
+        "name": "ai-red-vs-blue-devsecops-sample-app",
         "sync": "OutOfSync",
         "health": "Degraded",
         "is_mock": True,
