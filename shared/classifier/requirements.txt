@@ -1,0 +1,9 @@
+# Dependencias para reproducir el experimento del clasificador de prompt injection.
+# Fijamos rangos amplios pero probados en CPU (sin GPU).
+transformers>=4.40,<5
+torch>=2.2
+# tokenizers de DeBERTa-v3 usa SentencePiece
+sentencepiece>=0.2.0
+protobuf>=4.25
+# Barra de progreso / descarga de modelos desde HuggingFace Hub
+huggingface-hub>=0.23

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Black Alpaca 2026 — Charlas de Jean Paul López</title>
+  <style>
+    :root { --bg:#0a0a0a; --fg:#e8e8e8; --green:#00ff9c; --amber:#ffb000; --red:#ff3b3b; --cyan:#3bc9ff; --dim:#555; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body {
+      background:var(--bg); color:var(--fg);
+      font-family:ui-monospace,'JetBrains Mono',Menlo,Consolas,monospace;
+      min-height:100vh; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; padding:2rem; gap:2.5rem;
+    }
+    .prompt { color:var(--green); font-size:.9rem; opacity:.8; letter-spacing:.05em; }
+    h1 { font-size:1.4rem; font-weight:600; color:var(--green); letter-spacing:.02em; }
+    .sub { color:var(--dim); font-size:.85rem; margin-top:.4rem; }
+    .cards { display:flex; gap:1.5rem; flex-wrap:wrap; justify-content:center; max-width:960px; }
+    a.card {
+      display:block; text-decoration:none; color:var(--fg);
+      border:1px solid #222; border-radius:10px; padding:1.5rem 1.6rem;
+      width:420px; background:linear-gradient(180deg,#0e0e0e,#0a0a0a);
+      transition:border-color .15s, transform .15s;
+    }
+    a.card:hover { transform:translateY(-3px); }
+    a.card.s1:hover { border-color:var(--green); }
+    a.card.s2:hover { border-color:var(--red); }
+    .tag { font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; }
+    .s1 .tag { color:var(--green); }
+    .s2 .tag { color:var(--red); }
+    .s2 .tag b { color:var(--cyan); }
+    .card h2 { font-size:1rem; margin:.6rem 0 .5rem; line-height:1.35; }
+    .card p { font-size:.8rem; color:#9a9a9a; line-height:1.5; }
+    .go { margin-top:1rem; font-size:.8rem; }
+    .s1 .go { color:var(--green); }
+    .s2 .go { color:var(--red); }
+    footer { color:var(--dim); font-size:.72rem; text-align:center; line-height:1.6; }
+    .blink { animation:blink 1.1s steps(1) infinite; }
+    @keyframes blink { 50% { opacity:0; } }
+  </style>
+</head>
+<body>
+  <header style="text-align:center">
+    <div class="prompt">jlopez@black-alpaca:~$ ls charlas/<span class="blink">_</span></div>
+    <h1 style="margin-top:1rem">Red-teaming de agentes de IA · Black Alpaca 2026</h1>
+    <div class="sub">Jean Paul López · Red Hat · Lima, 14 nov 2026</div>
+  </header>
+
+  <div class="cards">
+    <a class="card s1" href="../session-1-isolation/02-slides/index.html">
+      <div class="tag">// Charla 1 — el agente como víctima</div>
+      <h2>Cuando el modelo deja de rechazar</h2>
+      <p>Red-teaming de agentes de IA en Kubernetes. 8 vectores de escalada × 4 posturas de aislamiento. El refusal no es contención.</p>
+      <div class="go">▶ abrir presentación</div>
+    </a>
+
+    <a class="card s2" href="../session-2-duel/02-slides/index.html">
+      <div class="tag">// Charla 2 — <span style="color:var(--red)">rojo</span> vs <b>azul</b>, los dos IA</div>
+      <h2>Agentes ofensivos y defensivos en tu pipeline DevSecOps</h2>
+      <p>Un duelo donde ambos bandos son IA. El rojo envenena al azul y el defensor aprueba el ataque solo. ¿Qué lo habría parado?</p>
+      <div class="go">▶ abrir presentación</div>
+    </a>
+  </div>
+
+  <footer>
+    Navegación: ←/→ cambiar slide · tecla <b>n</b> notas del ponente · imprimir para exportar PDF<br>
+    Metodología de aislamiento basada en el trabajo de Roy Belio (Red Hat), reencuadrada con laboratorio propio.
+  </footer>
+</body>
+</html>
