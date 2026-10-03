@@ -1,55 +1,50 @@
-# Propuesta 2 (Sessionize) — Duelo de agentes IA en el pipeline DevSecOps
+# Propuesta 2 (Sessionize) — Atacar y gobernar agentes de IA en el pipeline DevSecOps
 
-> **Segunda submission** para Black Alpaca 2026 (el CFP permite 2 por speaker).
-> Campos mapeados contra el formulario REAL de Sessionize (mismos límites que la propuesta 1).
-> Concepto técnico completo en `CONCEPTO.md`.
+> Segunda submission para Black Alpaca 2026 (el CFP permite 2 por speaker). Campos
+> mapeados contra el formulario real de Sessionize. Diseño técnico en `concept.md`.
 
 ---
 
-## ✅ CAMPOS DEL FORMULARIO
+## Campos del formulario
 
 ### Session Title — *máx 100 caracteres*
 ```
-Rojo vs Azul, los dos son IA: agentes ofensivos y defensivos en tu pipeline DevSecOps
+Tu agente de IA es un insider: cómo atacarlo y cómo gobernarlo en tu pipeline DevSecOps
 ```
-*(85 car. ✓)*
 
 Variante:
 ```
-Cuando el atacante convence a tu IA defensiva: red team de agentes en DevSecOps
+Engañé a tu IA defensiva y a ti con ella: atacar y gobernar agentes en DevSecOps
 ```
-*(79 car. ✓)*
 
 ### Description — *privada, para el comité*
 ```
-Meter un agente de IA en el pipeline como revisor de PRs o auto-remediador se vende como productividad. Esta charla demuestra, en vivo, que también es una nueva superficie de ataque: si tu defensor es un LLM que lee contenido controlado por el atacante (el diff de un PR, un commit, un comentario), el atacante puede envenenarlo con prompt injection y hacer que apruebe su propio ataque.
+Las empresas están metiendo agentes de IA en sus pipelines: revisores de PRs, gates de seguridad, asistentes que resumen y proponen despliegues. Cada uno es una identidad nueva con acceso a código, credenciales y producción, y casi nadie lo gobierna como tal. Esta charla lo ataca en vivo y luego muestra cómo se gobierna.
 
-Monto un duelo rojo-vs-azul donde ambos lados son agentes de IA. El agente rojo (ofensivo) abre pull requests maliciosos contra un pipeline real (Tekton/Argo CD en OpenShift). El agente azul (defensivo) los revisa y decide si bloquea el merge. En el primer acto, el azul funciona: detecta el PR malicioso obvio y lo bloquea. En el segundo, el rojo aprende — esconde el payload cambiando el encuadre igual que en el caso Morse clásico, de modo que el clasificador de prompt injection del azul pasa de un score de 0.999999 a 0.0005 (números que mido en vivo), e inyecta en el propio diff una instrucción dirigida al LLM revisor. En el tercer acto, el azul lee el diff, la inyección lo captura, y aprueba el PR malicioso. Argo CD lo auto-despliega. El atacante gana — a través del defensor.
+Parte ofensiva, sobre un pipeline real en Kubernetes (Tekton, Argo CD, Kyverno, cosign) con agentes que hablan por A2A. Un agente rojo abre PRs maliciosos contra un agente azul que los revisa. Primero el azul bloquea el ataque obvio. Después el rojo reencuadra el payload y el clasificador de prompt injection se desploma de 0.999999 a 0.0005 (medido por mí), e inyecta en el diff una instrucción para el revisor: el azul aprueba su propio ataque. El giro final: un tercer agente que asiste al humano en Backstage resume ese PR envenenado y le transmite la mentira, así que el "humano en el loop" también cae.
 
-El cierre es lo importante para una audiencia de red team: qué habría parado el ataque, y no es un mejor prompt del azul. Son fronteras de infraestructura — el agente defensivo sin permiso de merge directo (humano en el loop), el runner del CI aislado (uid 1000, capabilities dropped, egress deny-by-default), separación de credenciales entre el token que mergea y el que el agente toca, y tratar el contenido del atacante como dato no confiable y nunca como instrucción para el LLM.
+Parte defensiva: lo que aguanta no es un mejor prompt ni un humano mirando, sino gobernar a cada agente como una identidad de primera clase desde la plataforma. Cada agente corre en su propio sandbox sin token de API, con imagen firmada y verificada en admisión. Actúa con credenciales de vida corta, delegadas con token exchange (RFC 8693), y con permisos por tarea y por skill que decide OpenFGA detrás de un gateway de agentes. El atacante sigue entrando al agente, pero no tiene a dónde ir.
 
-Todo el laboratorio es reproducible, vive en un repositorio público con GitOps y ya corre de punta a punta en un clúster OpenShift real: el agente azul se ejecuta como un step de un pipeline Tekton en un runner aislado (SCC restricted-v2, capabilities dropped, egress deny), aprueba el PR envenenado, y el merge/deploy GitOps queda demostrado. Reutilizo el aislamiento de runtime y el clasificador de un estudio previo propio de red-teaming de agentes en Kubernetes; aquí lo llevo al terreno DevSecOps: el agente deja de ser solo la víctima y pasa a ser el actor — rojo y azul — dentro del pipeline. Metodología de aislamiento basada en el trabajo de Roy Belio (Red Hat), reencuadrada con laboratorio propio.
+El laboratorio del duelo y la supply chain ya corre de punta a punta en un clúster k3s propio, con resultados medidos. Todo es GitOps y reproducible, y se publicará con la charla. La metodología de aislamiento parte del trabajo de Roy Belio (Red Hat), citado como fuente.
 ```
 
-### Abstract — *PÚBLICO, ≤300 palabras*
+### Abstract — *público, ≤300 palabras*
 ```
-Poner un agente de IA en tu pipeline —revisor de PRs, gate de seguridad, auto-remediador— se vende como productividad. Esta charla demuestra en vivo que también abre una puerta: si tu defensor es un LLM que lee lo que el atacante escribe (el diff de un PR, un commit, un comentario), el atacante puede envenenarlo y hacer que apruebe su propio ataque.
+Tu pipeline ya tiene agentes de IA: revisan PRs, deciden gates, resumen despliegues. Cada uno es una identidad con acceso a tu código y a producción. La pregunta ofensiva es obvia: ¿qué pasa cuando el atacante le habla al agente?
 
-Monto un duelo donde los dos bandos son IA. El agente rojo abre pull requests maliciosos contra un pipeline real sobre Kubernetes. El agente azul los revisa y decide el merge. Primer acto: el azul gana, detecta el PR malicioso y lo bloquea. Segundo acto: el rojo aprende y esconde el payload cambiando solo el encuadre —el clasificador de prompt injection del azul se desploma de 0.999999 a 0.0005, lo mido en vivo— e inyecta en el diff una orden dirigida al propio revisor. Tercer acto: el azul lee el diff, cae en la inyección y aprueba el ataque. GitOps lo despliega solo. El atacante gana a través del defensor.
+Lo muestro en vivo sobre un pipeline real en Kubernetes con agentes que se comunican por A2A. Un agente rojo abre pull requests maliciosos y un agente azul los revisa. Primero el azul gana. Después el rojo reencuadra el payload, el clasificador de prompt injection cae de 0.999999 a 0.0005 (números propios) y una instrucción escondida en el diff convence al revisor de aprobar su propio ataque. El cierre del ataque: el agente que asiste al humano le resume ese PR como "pre-aprobado por seguridad", y el humano en el loop también firma.
 
-El cierre es lo que importa para red team: lo que habría parado esto no es un mejor prompt, son fronteras de infraestructura. El agente defensivo sin permiso de merge directo (humano en el loop), el runner aislado (uid 1000, capabilities dropped, egress deny), separación de credenciales, y tratar el input del atacante como dato y nunca como instrucción.
+La segunda mitad responde qué aguanta, y no es un mejor prompt. Es gobernar a cada agente como una identidad de primera clase desde la plataforma: sandbox propio sin token de API, imagen firmada y verificada en admisión, credenciales de vida corta delegadas con token exchange (RFC 8693) y permisos por tarea y por skill decididos por OpenFGA detrás de un gateway de agentes. El atacante sigue convenciendo al agente, pero el agente ya no tiene a dónde ir.
 
-Te llevas: por qué un agente de IA defensivo es un blanco, no solo un escudo; cómo se envenena a un revisor LLM en un pipeline; y un blueprint de contención reproducible con GitOps. Lab público y números propios.
+Te llevas: cómo se envenena una cadena de agentes y al humano que confía en ellos, por qué los controles que leen texto del atacante son atacables, y un blueprint reproducible en GitOps para gobernar agentes en tu pipeline.
 
-Nivel intermedio-avanzado. Se asume CI/CD, Kubernetes y una noción de qué es un agente de IA.
+Nivel intermedio-avanzado. Se asume CI/CD y Kubernetes.
 ```
-*(~290 palabras ✓)*
 
 ### Talk Teaser — *≤240 caracteres*
 ```
-¿Pusiste una IA a revisar tus PRs? Monto un duelo rojo vs azul donde ambos son agentes. El rojo esconde el payload, el azul lo aprueba solo, GitOps lo despliega. El atacante gana a través del defensor. Lab reproducible.
+Tu revisor de PRs es una IA. Mi agente rojo lo convence de aprobar su propio ataque, y el asistente del humano le jura que es seguro. Luego lo gobierno: sandbox, identidad propia y permisos por tarea. Demo en vivo.
 ```
-*(~223 car. ✓)*
 
 ### Session format
 ```
@@ -72,27 +67,35 @@ Español
 ```
 
 ### Supporting Files
-> Mismo repo público que la propuesta 1 (comparten lab). El one-pager PDF enlaza al repo y a la sección del duelo.
+> El one-pager PDF de la propuesta, con enlace al repositorio del laboratorio.
 
 ---
 
 ## Esqueleto (50 min)
 
-1. **(0-5)** El pitch inocente: "pongamos una IA a revisar PRs / a remediar vulns". Por qué suena bien.
-2. **(5-12)** El duelo, reglas: agente rojo ofensivo vs agente azul defensivo sobre un pipeline real (Tekton/Argo CD).
-3. **(12-20)** Acto 1 — el azul gana: detecta y bloquea el PR malicioso obvio. Demo en vivo.
-4. **(20-30)** Acto 2 — el rojo aprende: evade el clasificador (0.999999 → 0.0005, medido en vivo) + inyección dirigida al revisor en el diff.
-5. **(30-38)** Acto 3 — el azul traiciona: aprueba el ataque, Argo CD lo despliega. El atacante ganó a través del defensor.
-6. **(38-46)** Acto 4 — qué lo habría parado: fronteras de infraestructura (merge sin el agente, runner aislado, separación de credenciales, input como dato).
-7. **(46-50)** Checklist para quien ya metió —o va a meter— IA en su pipeline. Cómo reproducir el lab.
-8. Preguntas.
+1. **(0-5)** Los agentes ya están en tu pipeline: cada uno es una identidad nueva.
+2. **(5-10)** El escenario: pipeline DevSecOps real (Tekton, Argo CD, Kyverno, cosign) y tres agentes que hablan por A2A.
+3. **(10-15)** Acto 1: el azul gana y bloquea el ataque obvio.
+4. **(15-22)** Acto 2: evasión del clasificador (0.999999 → 0.0005) e inyección indirecta en el diff. El azul aprueba.
+5. **(22-27)** Acto 3: la firma es válida y no ayuda, porque el ataque toca config, no la imagen.
+6. **(27-32)** Acto 4: el asistente del humano en Backstage le resume la mentira y el humano aprueba.
+7. **(32-45)** Gobernar agentes en vivo: sandbox e imagen firmada, identidad propia, token exchange (RFC 8693), permisos por tarea con OpenFGA detrás del gateway. El mismo ataque, ahora sin a dónde ir.
+8. **(45-50)** Checklist para gobernar los agentes de tu pipeline. Preguntas.
 
 ---
 
 ## Relación con la propuesta 1
 
-Son **complementarias**, no redundantes:
-- Propuesta 1: el agente de IA es la **víctima** a proteger (aislamiento, escalada).
-- Propuesta 2: el agente de IA es el **actor** (rojo y azul) dentro del pipeline DevSecOps.
+Son complementarias:
+- Propuesta 1: el agente es la **víctima** a aislar (escalada, fronteras de runtime).
+- Propuesta 2: el agente es una **identidad** dentro del pipeline que el atacante usa como insider, y la plataforma lo gobierna.
 
-Si el comité acepta una, perfecto. Si acepta las dos, forman una narrativa: "cómo proteger un agente" + "qué pasa cuando el agente defiende y lo engañan".
+---
+
+## Fuentes a citar (verificadas el 3 oct 2026)
+
+- RFC 8693 y la cadena de actores para delegación de agentes: [AAIF, 1 oct 2026](https://aaif.io/blog/agent-identity-and-delegated-access-in-mcp-systems).
+- Caso MoonPay (200+ servidores MCP, 60 000+ sesiones, gateway OAuth 2.1 + PKCE). Es un caso firmado por el proveedor Speakeasy junto a MoonPay: [AAIF, 24 sep 2026](https://aaif.io/blog/ai-governance-in-a-regulated-industry-how-moonpay-brought-mcp-sprawl-under-control).
+- Docker Sandbox Kit Spec v3 (permisos del agente dentro de la imagen OCI; Docker se compromete a enviarlo a la CNCF): [AAIF, 29 sep 2026](https://aaif.io/blog/dockers-sandbox-kit-spec-puts-an-agents-permissions-inside-the-container-image).
+- Apple endurece Full Disk Access: "the risks associated with this level of access will grow substantially": [MacRumors, 2 oct 2026](https://www.macrumors.com/2026/10/02/apple-announces-macos-full-disk-access-changes/).
+- OpenFGA, agentes como principales y permisos por tarea: [openfga.dev](https://openfga.dev/docs/modeling/agents/overview).
