@@ -1,3 +1,20 @@
-demo/values.local.yaml
 .DS_Store
+
+# PDFs de trabajo, salvo el one-pager que se adjunta al CFP
 *.pdf
+!session-1-isolation/01-proposal/one-pager.pdf
+
+# Python
+**/.venv/
+__pycache__/
+*.pyc
+
+# Laboratorio: los resultados (results*.json, 04-lab/probes/results/) SÍ se versionan (evidencia propia).
+**/*.local.*
+**/values.local.yaml
+
+# Credenciales / kubeconfig que nunca deben subirse
+*.kubeconfig
+kubeconfig
+.env
+*-secret.local.yaml
