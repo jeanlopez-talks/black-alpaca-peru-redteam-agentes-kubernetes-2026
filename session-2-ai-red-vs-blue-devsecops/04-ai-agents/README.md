@@ -42,7 +42,7 @@ Acto 4 BLOCK (el azul endurecido trata el diff como dato no confiable).
 - `blue-reviewer`: el mensaje es el diff; la respuesta, el veredicto en JSON.
 - `approval-agent`: el mensaje es un JSON `{"skill": ...}`. `execute-action` exige el
   esquema de seguridad `human-approval` declarado en la AgentCard: el token viaja en
-  `Authorization: Bearer`, **nunca** dentro del mensaje, y se compara en tiempo constante.
+  `X-Human-Approval` (Backstage ya usa `Authorization` para su usuario), **nunca** dentro del mensaje, y se compara en tiempo constante.
 
 ## Seguridad
 

@@ -6,9 +6,10 @@ Skills (el mensaje es un JSON de texto con el campo `skill`):
   propose-actions     {"skill": "propose-actions"}                     solo texto
   execute-action      {"skill": "execute-action", "action_id": "..."}  exige token humano
 
-El token humano viaja en la cabecera `Authorization: Bearer <token>` (esquema de
-seguridad `human-approval` declarado en la AgentCard), nunca dentro del mensaje: así no
-queda en el historial de la conversación ni en los logs del agente.
+El token humano viaja en la cabecera `X-Human-Approval` (esquema de seguridad
+`human-approval`, tipo API key, declarado en la AgentCard), nunca dentro del mensaje: así
+no queda en el historial de la conversación ni en los logs del agente. No se usa
+`Authorization` porque Backstage ya la ocupa con el token de su propio usuario.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from a2a.server.events import EventQueue
 from a2a.types import (
     AgentCard,
     AgentSkill,
-    HTTPAuthSecurityScheme,
+    APIKeySecurityScheme,
     SecurityRequirement,
     SecurityScheme,
 )
@@ -35,6 +36,7 @@ log = logging.getLogger(__name__)
 
 DEFAULT_PORT = 8080
 HUMAN_SCHEME = "human-approval"
+HUMAN_HEADER = "X-Human-Approval"
 
 
 def agent_card(public_url: str) -> AgentCard:
@@ -69,17 +71,18 @@ def agent_card(public_url: str) -> AgentCard:
         ],
         security_schemes={
             HUMAN_SCHEME: SecurityScheme(
-                http_auth_security_scheme=HTTPAuthSecurityScheme(
-                    scheme="bearer", description="Token de aprobación de un humano."
+                api_key_security_scheme=APIKeySecurityScheme(
+                    location="header",
+                    name=HUMAN_HEADER,
+                    description="Token de aprobación de un humano.",
                 )
             )
         },
     )
 
 
-def _bearer_token(context: RequestContext) -> str:
-    value = request_header(context, "authorization")
-    return value[7:].strip() if value.lower().startswith("bearer ") else ""
+def _human_token(context: RequestContext) -> str:
+    return request_header(context, HUMAN_HEADER).strip()
 
 
 def handle(request: dict[str, Any], human_token: str) -> dict[str, Any]:
@@ -115,7 +118,7 @@ class ApprovalExecutor(AgentExecutor):
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         try:
             request = json.loads(context.get_user_input() or "{}")
-            result = handle(request, _bearer_token(context))
+            result = handle(request, _human_token(context))
         except actions.HumanApprovalRequiredError as exc:
             log.warning("acción rechazada: sin token humano válido")
             result = {"error": "human_approval_required", "detail": str(exc)}

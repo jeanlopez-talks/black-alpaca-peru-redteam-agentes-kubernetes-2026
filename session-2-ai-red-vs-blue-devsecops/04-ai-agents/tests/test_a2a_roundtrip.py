@@ -50,7 +50,7 @@ def approval_url(monkeypatch):
 
 
 async def _ask(url, payload, token=None):
-    headers = {"Authorization": f"Bearer {token}"} if token else None
+    headers = {"X-Human-Approval": token} if token else None
     return json.loads(await a2a_client.send_text(url, json.dumps(payload), headers=headers))
 
 

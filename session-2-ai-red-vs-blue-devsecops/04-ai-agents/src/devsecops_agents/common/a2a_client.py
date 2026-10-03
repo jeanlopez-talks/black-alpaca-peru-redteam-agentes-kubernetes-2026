@@ -1,7 +1,7 @@
 """Cliente A2A común (a2a-sdk 1.2): envía un mensaje de texto y devuelve el texto de la respuesta.
 
 `create_client(url)` descubre la AgentCard en /.well-known/agent-card.json y elige el
-transporte. Las cabeceras (p. ej. el token humano en `Authorization`) viajan en el
+transporte. Las cabeceras (p. ej. el token humano en `X-Human-Approval`) viajan en el
 cliente httpx, nunca dentro del mensaje.
 """
 

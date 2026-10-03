@@ -63,7 +63,7 @@ metadata:
   title: DevSecOps Approval Agent (A2A)
   description: >-
     Agente A2A con tres skills: summarize-pipeline (lectura), propose-actions (no
-    ejecuta) y execute-action (exige el token de un humano en Authorization: Bearer).
+    ejecuta) y execute-action (exige el token de un humano en la cabecera X-Human-Approval).
   links:
     - url: http://backstage-devsecops-agent.devsecops-agent.svc.cluster.local/.well-known/agent-card.json
       title: AgentCard
@@ -78,7 +78,7 @@ spec:
     skills:
       summarize-pipeline: '{"skill": "summarize-pipeline"}'
       propose-actions: '{"skill": "propose-actions"}'
-      execute-action: '{"skill": "execute-action", "action_id": "approve:<run>"}  # Authorization: Bearer <token humano>'
+      execute-action: '{"skill": "execute-action", "action_id": "approve:<run>"}  # cabecera X-Human-Approval: <token humano>'
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
