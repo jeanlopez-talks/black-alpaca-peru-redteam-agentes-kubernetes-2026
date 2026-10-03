@@ -5,7 +5,7 @@ TOOLS del agente DevSecOps (human-in-the-loop).
 Dos familias de tools, separadas A PROPOSITO por su poder:
 
   LECTURA (seguras, el agente las usa libremente):
-    - read_pipelineruns()  : lee los PipelineRun/TaskRun de Tekton de openclaw-duel
+    - read_pipelineruns()  : lee los PipelineRun/TaskRun de Tekton de devsecops-duel
                              y resume cada etapa (sast/build/sbom/trivy/sign/gate/
                              verify/deploy) con su estado y por que paso/fallo.
     - read_argocd_apps()   : lee las Application de Argo CD y su sync/health.
@@ -34,7 +34,12 @@ marca is_mock=True cuando usa el fallback.
 
 from __future__ import annotations
 
+import hmac
+import json
 import os
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -44,7 +49,9 @@ PIPELINE_STAGES = [
 ]
 
 # Namespace donde corre el pipeline del duelo (parametrizable por entorno).
-DUEL_NAMESPACE = os.getenv("DUEL_NAMESPACE", "openclaw-duel")
+DUEL_NAMESPACE = os.getenv("DUEL_NAMESPACE", "devsecops-duel")
+ARGOCD_SERVER = os.getenv("ARGOCD_SERVER", "http://argocd-server.argocd.svc.cluster.local")
+ARGOCD_PROJECT = os.getenv("ARGOCD_PROJECT", "ai-red-vs-blue-devsecops")
 
 
 @dataclass
@@ -85,7 +92,7 @@ def _k8s_client() -> Any | None:
 
 
 def read_pipelineruns() -> list[PipelineSummary]:
-    """Lee los PipelineRun de Tekton de openclaw-duel y los resume por etapa.
+    """Lee los PipelineRun de Tekton de devsecops-duel y los resume por etapa.
 
     TOOL DE LECTURA (segura). Sin cluster, devuelve un ejemplo representativo del
     duelo (gate aprueba pero deploy lo frena Kyverno) marcado is_mock=True.
@@ -119,24 +126,29 @@ def read_pipelineruns() -> list[PipelineSummary]:
 
 
 def read_argocd_apps() -> list[dict[str, Any]]:
-    """Lee las Application de Argo CD (ns argocd) y su sync/health.
+    """Lee las Application del proyecto de la charla por la API de Argo CD.
 
-    TOOL DE LECTURA (segura). Sin cluster, devuelve un ejemplo (is_mock=True).
+    TOOL DE LECTURA (segura). Usa el token de un ROL DE PROYECTO de Argo CD que solo
+    puede leer las Application de ARGOCD_PROJECT: el agente no tiene RBAC de
+    Kubernetes sobre el namespace argocd. Sin token o sin respuesta, devuelve un
+    ejemplo marcado is_mock=True.
     """
-    client = _k8s_client()
-    if client is None:
+    token = os.getenv("ARGOCD_TOKEN", "")
+    if not token:
         return [_mock_argocd_app()]
+    query = urllib.parse.urlencode({"projects": ARGOCD_PROJECT})
+    request = urllib.request.Request(
+        f"{ARGOCD_SERVER}/api/v1/applications?{query}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     try:
-        api = client.CustomObjectsApi()
-        apps = api.list_namespaced_custom_object(
-            group="argoproj.io", version="v1alpha1", namespace="argocd",
-            plural="applications",
-        )
-    except Exception:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            apps = json.load(response)
+    except (urllib.error.URLError, TimeoutError, ValueError):
         return [_mock_argocd_app()]
 
     out: list[dict[str, Any]] = []
-    for item in apps.get("items", []):
+    for item in apps.get("items") or []:
         st = item.get("status", {})
         out.append({
             "name": item.get("metadata", {}).get("name", "?"),
@@ -206,7 +218,8 @@ def execute_action(action_id: str, human_token: str | None) -> dict[str, Any]:
     """
     expected = os.getenv("HUMAN_APPROVAL_TOKEN", "")
     # GATE HUMANO: sin token valido no se ejecuta NADA. Mitigacion central.
-    if not expected or not human_token or human_token != expected:
+    # compare_digest: comparacion en tiempo constante (evita timing attacks).
+    if not expected or not human_token or not hmac.compare_digest(human_token, expected):
         raise HumanApprovalRequired(
             "Accion RECHAZADA: requiere aprobacion humana. El agente propone pero "
             "no actua solo. Pasa un token humano valido (HUMAN_APPROVAL_TOKEN) para "
