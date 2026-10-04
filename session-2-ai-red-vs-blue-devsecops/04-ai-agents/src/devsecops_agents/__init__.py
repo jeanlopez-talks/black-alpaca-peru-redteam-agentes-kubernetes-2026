@@ -1,3 +1,4 @@
-"""Agentes del duelo rojo vs azul: revisor azul, atacante rojo y agente de aprobación (A2A)."""
+"""Agentes del duelo rojo vs azul: revisor azul, atacante rojo, agente de aprobación y
+agente de remediación (A2A)."""
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"

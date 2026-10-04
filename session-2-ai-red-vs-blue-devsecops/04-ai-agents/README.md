@@ -1,12 +1,13 @@
 # Agentes del duelo (A2A)
 
-Tres agentes de IA que se comunican por **A2A** (protocolo Agent2Agent, `a2a-sdk` 1.2):
+Cuatro agentes de IA que se comunican por **A2A** (protocolo Agent2Agent, `a2a-sdk` 1.2):
 
 | Agente | Rol A2A | Skills | Qué hace en la demo |
 |--------|---------|--------|---------------------|
 | `blue-reviewer` | servidor | `review-pr` | Revisa el diff de un PR y decide APPROVE o BLOCK. Postura vulnerable o endurecida (`BLUE_HARDENED`). |
 | `red-attacker` | cliente | — | Abre los PRs del ataque y se los envía al azul. Fuente única de los diffs. |
 | `approval-agent` | servidor | `summarize-pipeline`, `propose-actions`, `execute-action` | Asistente del humano en Backstage: resume el pipeline, propone acciones y solo ejecuta con token humano. |
+| `remediation-agent` | servidor (dos puertos) | `advise` (:8081, pipeline); `latest-report`, `chat`, `confirm-action`, `cancel-action` (:8080, Backstage) | Convierte los hallazgos de Trivy en recomendaciones priorizadas con su lineamiento (leído por MCP), conversa en Backstage y solo sube la corrección a una rama `remediation/*` cuando la persona pulsa Confirmar. |
 
 ```
 04-ai-agents/
@@ -17,6 +18,8 @@ Tres agentes de IA que se comunican por **A2A** (protocolo Agent2Agent, `a2a-sdk
 │   ├── blue_reviewer/          review.py (reglas + LLM), server.py (AgentCard + executor)
 │   ├── red_attacker/           payloads.py (PRs), attacker.py (cliente A2A), CLI
 │   ├── approval_agent/         cluster.py (lectura), actions.py (puerta humana), narrative.py, server.py
+│   ├── remediation_agent/      analysis.py (Trivy → recomendaciones), guidelines.py (MCP),
+│   │                           conversation.py (chat + confirmación), apply.py (rama), request.py (CLI del pipeline)
 │   └── duel/                   orquestador de los Actos 1-4, siempre por A2A
 ├── tests/                      reglas, puerta humana y A2A real (servidores locales)
 ├── results/                    duel-results.json
@@ -27,7 +30,7 @@ Tres agentes de IA que se comunican por **A2A** (protocolo Agent2Agent, `a2a-sdk
 
 ```bash
 uv sync                          # entorno con las versiones exactas del lock
-uv run pytest                    # 17 tests, incluido el ida y vuelta A2A
+uv run pytest                    # 33 tests, incluido el ida y vuelta A2A
 uv run ruff check src tests      # lint (incluye reglas de seguridad de Bandit)
 uv run run-duel                  # los 4 actos por A2A -> results/duel-results.json
 uv run run-duel --llm            # azul con LLM (vLLM local); sin LLM cae a reglas
@@ -57,6 +60,19 @@ Tekton Chains. No escribe en este repo: no tiene ninguna credencial para hacerlo
 - `approval-agent`: el mensaje es un JSON `{"skill": ...}`. `execute-action` exige el
   esquema de seguridad `human-approval` declarado en la AgentCard: el token viaja en
   `X-Human-Approval` (Backstage ya usa `Authorization` para su usuario), **nunca** dentro del mensaje, y se compara en tiempo constante.
+- `remediation-agent`: el mensaje es un JSON `{"skill": ...}` (en el puerto de Backstage, un
+  texto plano es un mensaje de chat). Dos puertas separadas por NetworkPolicy: el pipeline,
+  que ejecuta código no confiable del PR, solo alcanza `advise` (:8081); la conversación y
+  `confirm-action` solo se alcanzan desde Backstage (:8080).
+  - El análisis es determinista: versiones, CVE y conteos salen de Trivy, nunca del modelo.
+  - Cada hallazgo de configuración se ata a su regla por ID (`AVD-DS-0002` → `POD-101`) y el
+    agente la lee del catálogo con `backstage_catalog.get-catalog-entity`, vía agentgateway
+    con su propio cliente de Keycloak y la relación `can_call` de OpenFGA.
+  - El modelo solo conversa. Pedir "aplica R1" prepara una acción pendiente con el diff
+    exacto; solo `confirm-action` (el botón de Backstage), en la misma conversación y antes
+    de 15 minutos, la ejecuta. Nada del chat, del Containerfile ni de Trivy puede confirmarla.
+  - Aplicar = subir la rama `remediation/<run>` con el cambio (deploy key solo de este repo;
+    `main` protegida). El PR y el merge son de la persona; el despliegue sigue por GitOps.
 
 ## Seguridad
 
