@@ -10,8 +10,8 @@
 apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
-  name: duel-devsecops
-  title: Duelo DevSecOps (rojo vs azul)
+  name: ai-red-vs-blue-devsecops
+  title: Duelo IA en DevSecOps (agente rojo vs agente azul)
   annotations:
     # Pestaña ArgoCD: todas las Applications de la demo (clave sin "/": el plugin la
     # pone en la URL y con "/" no encuentra la ruta).
@@ -19,7 +19,8 @@ metadata:
     # Pestaña TechDocs: mkdocs.yml y docs/ junto a este archivo.
     backstage.io/techdocs-ref: dir:.
   description: >-
-    Flujo DevSecOps del duelo: pipeline Tekton de 9 etapas, admisión Kyverno y
+    Un agente rojo intenta colar un PR malicioso y un agente azul lo revisa dentro de un
+    pipeline DevSecOps: Tekton de 9 etapas, admisión Kyverno y
     despliegue GitOps por Argo CD. Dos agentes con la persona en el bucle: el de
     aprobación resume y propone acciones; el de remediación explica los hallazgos con
     sus lineamientos y solo aplica una corrección cuando la confirmas.
@@ -30,29 +31,29 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
-  name: duel-pipeline
-  title: Pipeline DevSecOps del duelo
+  name: devsecops-pipeline
+  title: Pipeline DevSecOps (SAST, build, Trivy, firma, revisión IA, despliegue)
   description: >-
-    Pipeline Tekton 'duel-devsecops' en devsecops-duel: SAST, build, SBOM, Trivy,
+    Pipeline Tekton 'devsecops-pipeline' en el namespace devsecops-duel: SAST, build, SBOM, Trivy,
     firma, gate del agente azul, verificación y deploy GitOps. Kyverno frena el
     deploy sin aprobación humana.
   annotations:
     argocd/app-name: ai-red-vs-blue-devsecops-sample-app
     tekton.dev/cicd: "true"
-    backstage.io/kubernetes-id: duel-pipeline
+    backstage.io/kubernetes-id: devsecops-pipeline
     backstage.io/kubernetes-namespace: devsecops-duel
   tags: [tekton, kyverno, supply-chain]
 spec:
   type: service
   lifecycle: experimental
   owner: labjp-homelab
-  system: duel-devsecops
+  system: ai-red-vs-blue-devsecops
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
-  name: backstage-devsecops-agent
-  title: Agente DevSecOps (human-in-the-loop)
+  name: approval-agent
+  title: Agente de aprobación (resume el pipeline, propone y espera al humano)
   description: >-
     Resume cada etapa del pipeline, explica por qué se aprobó o rechazó y PROPONE
     acciones que un humano confirma con su token. Propone, pero no actúa solo.
@@ -64,14 +65,14 @@ spec:
   type: service
   lifecycle: experimental
   owner: labjp-homelab
-  system: duel-devsecops
-  providesApis: [devsecops-agent-api]
+  system: ai-red-vs-blue-devsecops
+  providesApis: [approval-agent-api]
 ---
 apiVersion: backstage.io/v1alpha1
 kind: API
 metadata:
-  name: devsecops-agent-api
-  title: DevSecOps Approval Agent (A2A)
+  name: approval-agent-api
+  title: API A2A del agente de aprobación
   description: >-
     Agente A2A con tres skills: summarize-pipeline (lectura), propose-actions (no
     ejecuta) y execute-action (exige el token de un humano en la cabecera X-Human-Approval).
@@ -82,7 +83,7 @@ spec:
   type: a2a
   lifecycle: experimental
   owner: labjp-homelab
-  system: duel-devsecops
+  system: ai-red-vs-blue-devsecops
   definition: |
     protocol: A2A (JSON-RPC 2.0)
     agentCard: /.well-known/agent-card.json
@@ -94,8 +95,8 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
-  name: devsecops-remediation-agent
-  title: Agente de remediación (human-in-the-loop)
+  name: remediation-agent
+  title: Agente de remediación (explica hallazgos y propone correcciones)
   description: >-
     Convierte los hallazgos de Trivy en recomendaciones con su lineamiento (leído por MCP
     y contrastado con la política que Kyverno aplica), conversa en Backstage y solo sube
@@ -108,15 +109,15 @@ spec:
   type: service
   lifecycle: experimental
   owner: labjp-homelab
-  system: duel-devsecops
-  providesApis: [devsecops-remediation-agent-api]
+  system: ai-red-vs-blue-devsecops
+  providesApis: [remediation-agent-api]
   consumesApis: []
 ---
 apiVersion: backstage.io/v1alpha1
 kind: API
 metadata:
-  name: devsecops-remediation-agent-api
-  title: DevSecOps Remediation Agent (A2A)
+  name: remediation-agent-api
+  title: API A2A del agente de remediación
   description: >-
     Dos puertas separadas por NetworkPolicy: advise (:8081, solo la etapa remediation
     del pipeline) y chat/latest-report/confirm-action/cancel-action (:80, solo Backstage).
@@ -128,7 +129,7 @@ spec:
   type: a2a
   lifecycle: experimental
   owner: labjp-homelab
-  system: duel-devsecops
+  system: ai-red-vs-blue-devsecops
   definition: |
     protocol: A2A (JSON-RPC 2.0)
     agentCard: /.well-known/agent-card.json
@@ -145,7 +146,7 @@ apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: blue-reviewer
-  title: Agente azul (revisor de PRs)
+  title: Agente azul (revisa cada PR dentro del pipeline)
   description: Servidor A2A (skill review-pr) en sandbox; versión vulnerable y endurecida.
   annotations:
     backstage.io/kubernetes-id: blue-reviewer
@@ -155,4 +156,4 @@ spec:
   type: service
   lifecycle: experimental
   owner: labjp-homelab
-  system: duel-devsecops
+  system: ai-red-vs-blue-devsecops

@@ -89,7 +89,7 @@ cd session-2-ai-red-vs-blue-devsecops/04-ai-agents && uv run run-duel   # los 4 
 
 # Duelo en k3s (Tekton + Argo CD del homelab) — sesión 2: un PipelineRun por acto, sync manual.
 argocd app sync ai-red-vs-blue-devsecops-pipeline-runs \
-  --resource tekton.dev:PipelineRun:duel-act3-poisoned-pr
+  --resource tekton.dev:PipelineRun:act3-prompt-injected-pr
 
 # Las 4 posturas con Argo CD — sesión 1
 kubectl apply -f session-1-ai-agent-isolation/03-gitops/argocd/

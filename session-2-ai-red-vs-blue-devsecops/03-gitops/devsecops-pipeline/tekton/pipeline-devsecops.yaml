@@ -84,7 +84,7 @@
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: duel-devsecops
+  name: devsecops-pipeline
   namespace: devsecops-duel
 spec:
   params:

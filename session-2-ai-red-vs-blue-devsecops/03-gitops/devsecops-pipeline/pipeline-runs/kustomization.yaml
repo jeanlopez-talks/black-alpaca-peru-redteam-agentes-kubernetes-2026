@@ -11,6 +11,6 @@ labels:
     includeSelectors: false
 
 resources:
-  - pipelinerun-act1-obvious-pr.yaml
-  - pipelinerun-act3-poisoned-pr.yaml
+  - pipelinerun-act1-obvious-malicious-pr.yaml
+  - pipelinerun-act3-prompt-injected-pr.yaml
   - pipelinerun-act4-hardened-reviewer.yaml

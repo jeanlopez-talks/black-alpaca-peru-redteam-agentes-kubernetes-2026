@@ -513,7 +513,7 @@ cd ../04-ai-agents && uv run run-duel
 
 <span class="c-cmt"># clúster · Tekton (k3s): 8 etapas + supply chain real</span>
 argocd app sync ai-red-vs-blue-devsecops-pipeline-runs \
-  --resource tekton.dev:PipelineRun:duel-act3-poisoned-pr   <span class="c-cmt"># un PipelineRun por acto</span></pre>
+  --resource tekton.dev:PipelineRun:act3-prompt-injected-pr   <span class="c-cmt"># un PipelineRun por acto</span></pre>
         <p class="muted" style="margin-top:.8em;font-size:12.5px">Ya corrió de punta a punta en
           <strong>OpenShift 4.22</strong>: imagen propia del registry interno, SCC <span class="accent-green">restricted-v2</span>
           asignó <span class="accent-green">runAsUser=1000980000</span> (del rango del namespace, no uid 1000 fijo),

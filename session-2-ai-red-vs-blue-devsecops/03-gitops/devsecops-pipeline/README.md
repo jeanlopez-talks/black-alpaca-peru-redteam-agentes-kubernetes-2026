@@ -29,10 +29,10 @@ devsecops-pipeline/                    Application ai-red-vs-blue-devsecops-pipe
 │   ├── service-*.yaml, serviceaccount-blue-reviewer.yaml (sin token de API)
 │   └── networkpolicy-blue-reviewer.yaml   entra solo el rojo; sale solo a DNS y LLM
 ├── tekton/
-│   └── pipeline-devsecops.yaml            Pipeline `duel-devsecops` (9 etapas)
+│   └── pipeline-devsecops.yaml            Pipeline `devsecops-pipeline` (9 etapas)
 ├── pipeline-runs/                     Application …-pipeline-runs (sync MANUAL = lanzar el acto)
-│   ├── pipelinerun-act1-obvious-pr.yaml       el azul bloquea el ataque obvio
-│   ├── pipelinerun-act3-poisoned-pr.yaml      el azul aprueba; Kyverno frena al agente
+│   ├── pipelinerun-act1-obvious-malicious-pr.yaml       el azul bloquea el ataque obvio
+│   ├── pipelinerun-act3-prompt-injected-pr.yaml      el azul aprueba; Kyverno frena al agente
 │   └── pipelinerun-act4-hardened-reviewer.yaml el azul endurecido bloquea
 ├── sample-app/                        Application …-sample-app (la app objetivo, solo por GitOps)
 │   ├── Containerfile, index.html          fuente de la imagen (ConfigMap sample-app-src)
@@ -109,15 +109,15 @@ Por CLI:
 
 ```bash
 argocd app sync ai-red-vs-blue-devsecops-pipeline-runs \
-  --resource tekton.dev:PipelineRun:duel-act3-poisoned-pr
-tkn pipelinerun logs duel-act3-poisoned-pr -n devsecops-duel -f
+  --resource tekton.dev:PipelineRun:act3-prompt-injected-pr
+tkn pipelinerun logs act3-prompt-injected-pr -n devsecops-duel -f
 ```
 
 | Acto | PipelineRun | Resultado esperado |
 |------|-------------|--------------------|
-| 1 | `duel-act1-obvious-pr` | el azul **bloquea**; no hay deploy |
-| 2-3 | `duel-act3-poisoned-pr` | el azul **aprueba**, la firma verifica, Kyverno **rechaza** los dos intentos del agente |
-| 4 | `duel-act4-hardened-reviewer` | el azul endurecido **bloquea** |
+| 1 | `act1-obvious-malicious-pr` | el azul **bloquea**; no hay deploy |
+| 2-3 | `act3-prompt-injected-pr` | el azul **aprueba**, la firma verifica, Kyverno **rechaza** los dos intentos del agente |
+| 4 | `act4-hardened-reviewer` | el azul endurecido **bloquea** |
 | Humano | commit con `duel.redteam/human-approved: "true"` en `sample-app/deployment-sample-app.yaml` | Argo CD despliega la app firmada |
 
 **Modo `llm`** (el azul razona con el vLLM local): `AGENT_MODE: llm` en el Deployment del

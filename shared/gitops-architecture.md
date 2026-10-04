@@ -17,8 +17,8 @@ Lo propio de las dos propuestas de Black Alpaca, cada una con su Argo CD:
   + Kyverno + agentes. Su AppProject `ai-red-vs-blue-devsecops` y sus Applications NO están aquí: los registra
   el homelab (`homelab-gitops/bootstrap/applications/talks/black-alpaca-2026/`), porque quien controla el
   AppProject controla los permisos, y eso es de la plataforma.
-  - La **config particular de Backstage para la charla** (catálogo del duelo, componente
-    `duel-devsecops`, el agente interactivo) vive AQUÍ, NO en el homelab. La PLATAFORMA
+  - La **config particular de Backstage para la charla** (catálogo del duelo, sistema
+    `ai-red-vs-blue-devsecops`, el agente interactivo) vive AQUÍ, NO en el homelab. La PLATAFORMA
     Backstage está en el homelab; aquí solo su configuración específica de la demo.
 
 ## Regla

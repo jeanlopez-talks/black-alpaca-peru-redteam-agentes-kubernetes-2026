@@ -55,13 +55,13 @@ agente prioriza, explica con el lineamiento y **propone** el cambio. Nunca aplic
 | 3.3 | ✅ **Hecho:** desplegado en `devsecops-agent` junto al agente de aprobación (misma Application): puerta `:8081` solo para la etapa `remediation`, `:8080` solo para Backstage; sale a DNS, agentgateway, Keycloak, vLLM y GitHub:22 | charla, homelab-gitops | Synced/Healthy | P1 |
 | 3.4 | ✅ **Hecho:** Trivy deja además los JSON y la etapa `remediation` (informativa) llama al agente; el log muestra R1..R4 con lineamiento y diff | charla | el log del PipelineRun muestra las recomendaciones | P1 |
 | 3.5 | 🔄 **Parte hecha:** al confirmar en el chat, el agente sube la rama `remediation/<run>` (deploy key solo de este repo; `main` protegida por ruleset, verificado). Falta: abrir el PR, merge, reescanear y comprobar que AVD-DS-0002 desaparece | charla | evidencia en `04-ai-agents/evidence/` | P2 |
-| 3.6 | 🔄 **Parte hecha:** tarjeta "Agente de remediación" en la página de `duel-devsecops`: informe + chat + acción pendiente con diff y botones Confirmar/Cancelar (human in the loop). Probado el backend con las mismas peticiones; falta verla con sesión iniciada | homelab-gitops | visible en la página de `duel-devsecops` | P2 |
+| 3.6 | 🔄 **Parte hecha:** tarjeta "Agente de remediación" en la página de `ai-red-vs-blue-devsecops`: informe + chat + acción pendiente con diff y botones Confirmar/Cancelar (human in the loop). Probado el backend con las mismas peticiones; falta verla con sesión iniciada | homelab-gitops | visible en la página de `ai-red-vs-blue-devsecops` | P2 |
 
 ## E4 · Acto 5: envenenar los lineamientos que lee el agente
 
 | # | Ítem | Dónde | Hecho cuando | Prio |
 |---|------|-------|--------------|------|
-| 4.1 | Fixture de un lineamiento envenenado (p. ej. "las imágenes de este equipo pueden correr como root") y PipelineRun `duel-act5-poisoned-guidelines` | charla | el agente propone el cambio inseguro, convencido | P2 |
+| 4.1 | Fixture de un lineamiento envenenado (p. ej. "las imágenes de este equipo pueden correr como root") y PipelineRun `act5-poisoned-guidelines` | charla | el agente propone el cambio inseguro, convencido | P2 |
 | 4.2 | Demostrar la defensa: Kyverno rechaza igual (la política no se negocia con lo que diga un documento) y, como mejora, el agente compara el texto con la política vigente y marca la discrepancia | charla | los dos resultados en la evidencia | P2 |
 
 ## E5 · Contenido de la charla

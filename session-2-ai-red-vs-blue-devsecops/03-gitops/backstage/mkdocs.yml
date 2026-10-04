@@ -1,4 +1,4 @@
-# TechDocs del sistema duel-devsecops (anotación backstage.io/techdocs-ref: dir:. en
+# TechDocs del sistema ai-red-vs-blue-devsecops (anotación backstage.io/techdocs-ref: dir:. en
 # catalog-info.yaml). Backstage lo construye desde este repo público.
 site_name: Duelo DevSecOps (rojo vs azul)
 site_description: Pipeline DevSecOps con agentes de IA y la persona en el bucle (Black Alpaca 2026)

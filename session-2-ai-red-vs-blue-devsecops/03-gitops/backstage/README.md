@@ -16,12 +16,12 @@ backstage/
 
 `catalog-info.yaml` es un archivo estándar de Backstage. El portal lo registra como
 `Location` (`app-config.production.yaml` del homelab) apuntando a este archivo en GitHub.
-En la página del sistema `duel-devsecops` aparecen:
+En la página del sistema `ai-red-vs-blue-devsecops` aparecen:
 
 | Pestaña / tarjeta | De dónde sale |
 |-------------------|---------------|
-| Kubernetes | pods con `backstage.io/kubernetes-id` (agentes y PipelineRuns del duelo) |
-| CI/CD (Tekton) | PipelineRuns con `backstage.io/kubernetes-id: duel-pipeline` |
+| Deployment → Kubernetes | pods con `backstage.io/kubernetes-id` (agentes y PipelineRuns del duelo) |
+| Deployment → Tekton (componente `devsecops-pipeline`) | PipelineRuns con `backstage.io/kubernetes-id: devsecops-pipeline` |
 | Argo CD | `ai-red-vs-blue-devsecops-sample-app`, con token de solo lectura |
 | **Asistente DevSecOps** | el agente de aprobación, por el proxy `/devsecops-agent` del portal |
 | **Agente de remediación** (pestaña propia) | informe del último análisis + chat, por el proxy `/remediation-agent` |

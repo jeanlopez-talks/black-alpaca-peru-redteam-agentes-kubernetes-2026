@@ -9,17 +9,17 @@
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
-  name: duel-act3-poisoned-pr
+  name: act3-prompt-injected-pr
   namespace: devsecops-duel
   labels:
-    # Backstage (componente duel-pipeline): pestañas Kubernetes y Tekton.
-    backstage.io/kubernetes-id: duel-pipeline
+    # Backstage (componente devsecops-pipeline): pestañas Kubernetes y Tekton.
+    backstage.io/kubernetes-id: devsecops-pipeline
   annotations:
     # Los PipelineRun son inmutables: cada sync lo reemplaza, es decir, relanza el acto.
     argocd.argoproj.io/sync-options: Force=true,Replace=true
 spec:
   pipelineRef:
-    name: duel-devsecops
+    name: devsecops-pipeline
   params:
     - name: pr-diff
       value: pr-02-poisoned.diff

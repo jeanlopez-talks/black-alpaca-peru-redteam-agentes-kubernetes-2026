@@ -69,7 +69,7 @@ def _print_report(report: dict[str, Any]) -> None:
                 )
     print(
         "[remediation] Pregunta al agente y confirma los cambios en Backstage "
-        "(sistema duel-devsecops)."
+        "(sistema ai-red-vs-blue-devsecops)."
     )
 
 

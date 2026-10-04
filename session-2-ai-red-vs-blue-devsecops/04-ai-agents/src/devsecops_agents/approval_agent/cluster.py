@@ -137,7 +137,7 @@ def _mock_pipelinerun() -> PipelineRunSummary:
             "RECHAZADO por Kyverno: sin aprobación humana y no viene de GitOps",
         ),
     ]
-    return PipelineRunSummary("duel-act3-poisoned-pr", "Failed", stages, is_mock=True)
+    return PipelineRunSummary("act3-prompt-injected-pr", "Failed", stages, is_mock=True)
 
 
 def _mock_argocd_app() -> dict[str, Any]:
