@@ -86,7 +86,18 @@ def report_for_model(report: dict[str, Any]) -> str:
 
     Así caben las 37 (o las que sean) y el modelo puede responder cuáles se corrigen.
     """
-    compact = {k: v for k, v in report.items() if k not in ("vulnerabilities", "recommendations")}
+    compact = {
+        k: v
+        for k, v in report.items()
+        if k not in ("vulnerabilities", "recommendations", "facts", "llm")
+    }
+    if report.get("llm"):
+        # Lo que el modelo concluyó (ya verificado) y lo que el verificador le corrigió.
+        compact["analisis_del_modelo"] = {
+            k: report["llm"].get(k) for k in ("findings", "packages", "corrections", "patch")
+        }
+    facts = report.get("facts") or {}
+    compact["hechos"] = {k: v for k, v in facts.items() if k != "package_usage"}
     compact["recommendations"] = [
         {**r, "fix": {k: v for k, v in (r.get("fix") or {}).items() if k != "diff"} or None}
         for r in report.get("recommendations", [])

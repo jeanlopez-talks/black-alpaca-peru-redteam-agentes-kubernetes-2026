@@ -37,6 +37,14 @@ def slim(report: dict[str, Any]) -> dict[str, Any]:
             {
                 "Target": r.get("Target", ""),
                 "Class": r.get("Class", ""),
+                # Grafo de paquetes (`--list-all-pkgs`): con él se calcula qué carga la app.
+                "Packages": [
+                    {
+                        "Name": p.get("Name", ""),
+                        "DependsOn": [d.split("@", 1)[0] for d in p.get("DependsOn") or []],
+                    }
+                    for p in r.get("Packages") or []
+                ],
                 "Vulnerabilities": [
                     {k: v.get(k) for k in _VULN_FIELDS} for v in r.get("Vulnerabilities") or []
                 ],
@@ -49,7 +57,18 @@ def slim(report: dict[str, Any]) -> dict[str, Any]:
     return {
         "ArtifactName": report.get("ArtifactName", ""),
         # Sistema operativo y digest de la imagen escaneada (para decir QUÉ se analizó).
-        "Metadata": {"OS": meta.get("OS") or {}, "RepoDigests": meta.get("RepoDigests") or []},
+        "Metadata": {
+            "OS": meta.get("OS") or {},
+            "RepoDigests": meta.get("RepoDigests") or [],
+            # Usuario y comando de la imagen: dicen quién corre de verdad.
+            "ImageConfig": {
+                "config": {
+                    k: v
+                    for k, v in ((meta.get("ImageConfig") or {}).get("config") or {}).items()
+                    if k in ("User", "Cmd", "Entrypoint")
+                }
+            },
+        },
         "Results": results,
     }
 
@@ -80,6 +99,11 @@ def _print_report(report: dict[str, Any]) -> None:
                 print(
                     "\n".join(f"[remediation]    {line}" for line in r["fix"]["diff"].splitlines())
                 )
+    if report.get("analysis_status") == "pending":
+        print(
+            "[remediation] Esto es el análisis por reglas. El modelo está analizando la imagen; "
+            "su análisis (verificado) aparecerá en Backstage en uno o dos minutos."
+        )
     print(
         "[remediation] Pregunta al agente y confirma los cambios en Backstage "
         "(sistema ai-red-vs-blue-devsecops)."

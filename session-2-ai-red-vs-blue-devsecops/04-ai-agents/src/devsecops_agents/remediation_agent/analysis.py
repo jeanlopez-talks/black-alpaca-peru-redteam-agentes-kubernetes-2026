@@ -220,6 +220,7 @@ def analyze(
     *,
     image: str = "",
     containerfile_path: str = "Containerfile",
+    facts: dict[str, Any] | None = None,
 ) -> Analysis:
     recs: list[Recommendation] = []
 
@@ -239,6 +240,15 @@ def analyze(
             evidence=[f"{avd}: {m.get('Message') or m.get('Title', '')}"],
             guideline_entity=TRIVY_TO_GUIDELINE.get(avd),
         )
+        # Trivy mira el Containerfile, no la imagen base: si la base ya fija un USER no
+        # root, el hallazgo es defensa en profundidad, no un riesgo HIGH.
+        if avd == "AVD-DS-0002" and facts and not facts.get("runs_as_root"):
+            rec.severity = "LOW"
+            rec.detail = (
+                f"Falso positivo parcial: la {facts.get('user_source')} ya define USER "
+                f"{facts.get('user')}, así que no corre como root. Repetir USER en el "
+                "Containerfile es defensa en profundidad (si alguien cambia la base). " + rec.detail
+            )
         if avd == "AVD-DS-0002" and not _USER_RE.search(containerfile):
             patched = add_nonroot_user(containerfile)
             rec.fix = Fix(

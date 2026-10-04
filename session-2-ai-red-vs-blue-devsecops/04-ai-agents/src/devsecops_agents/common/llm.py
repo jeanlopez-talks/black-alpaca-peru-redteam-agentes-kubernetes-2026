@@ -54,6 +54,13 @@ def llm_configured() -> bool:
     return provider.api_key_env is None or bool(os.getenv(provider.api_key_env))
 
 
+def model_id() -> str:
+    """Id del modelo en uso (para decir en el informe quién analizó)."""
+    provider = _PROVIDERS.get(provider_name())
+    default = provider.default_model if provider else ""
+    return os.getenv("LLM_MODEL", "").strip() or default
+
+
 def build_chat_model(**kwargs: Any) -> Any:
     """Construye el ChatModel de LangChain (temperature=0 para una demo reproducible)."""
     name = provider_name()

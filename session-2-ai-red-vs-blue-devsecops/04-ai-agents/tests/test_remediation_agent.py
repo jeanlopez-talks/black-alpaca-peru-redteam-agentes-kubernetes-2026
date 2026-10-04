@@ -90,6 +90,12 @@ POLICIES = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _no_model_by_default(monkeypatch):
+    """Sin modelo salvo que el test lo pida: advise no lanza el análisis en segundo plano."""
+    monkeypatch.setenv("LLM_PROVIDER", "none")
+
+
 class FakePolicies:
     def __init__(self, policies=None) -> None:
         self.policies = POLICIES if policies is None else policies
@@ -451,15 +457,30 @@ def test_report_lists_all_vulnerabilities_for_card_and_model():
     assert "+USER 1001" not in text  # los diffs no van al modelo
 
 
-def test_slim_keeps_os_and_digest():
+def test_slim_keeps_os_digest_user_and_package_graph():
     out = slim(
         {
             "ArtifactName": "img",
-            "Metadata": {"OS": {"Family": "redhat"}, "RepoDigests": ["r@sha256:1"], "Size": 9},
-            "Results": [],
+            "Metadata": {
+                "OS": {"Family": "redhat"},
+                "RepoDigests": ["r@sha256:1"],
+                "Size": 9,
+                "ImageConfig": {"config": {"User": "1001", "Env": ["SECRET=x"]}},
+            },
+            "Results": [
+                {
+                    "Target": "t",
+                    "Packages": [{"Name": "a", "DependsOn": ["b@1.x86_64"], "Licenses": ["x"]}],
+                }
+            ],
         }
     )
-    assert out["Metadata"] == {"OS": {"Family": "redhat"}, "RepoDigests": ["r@sha256:1"]}
+    assert out["Metadata"] == {
+        "OS": {"Family": "redhat"},
+        "RepoDigests": ["r@sha256:1"],
+        "ImageConfig": {"config": {"User": "1001"}},  # sin Env: puede traer secretos
+    }
+    assert out["Results"][0]["Packages"] == [{"Name": "a", "DependsOn": ["b"]}]
 
 
 def test_print_report_shows_summary_and_every_vulnerability(capsys):

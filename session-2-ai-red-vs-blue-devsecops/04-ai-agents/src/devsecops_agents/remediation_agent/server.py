@@ -12,10 +12,12 @@ puerta de Backstage se trata como mensaje de chat. Respuesta: JSON de la skill.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
-from dataclasses import asdict
+import threading
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -24,9 +26,11 @@ from a2a.server.events import EventQueue
 from a2a.types import AgentCard, AgentSkill
 
 from devsecops_agents import __version__
+from devsecops_agents.common import llm
 from devsecops_agents.common.a2a_server import build_agent_card, text_reply
-from devsecops_agents.remediation_agent import conversation
-from devsecops_agents.remediation_agent.analysis import analyze, rules_explanation
+from devsecops_agents.remediation_agent import conversation, llm_analysis
+from devsecops_agents.remediation_agent.analysis import Analysis, analyze, rules_explanation
+from devsecops_agents.remediation_agent.facts import image_facts
 from devsecops_agents.remediation_agent.guidelines import GuidelineClient
 from devsecops_agents.remediation_agent.policies import MISMATCH, PolicyReader, verify
 
@@ -77,17 +81,15 @@ class RemediationAgent:
         self.guidelines = guidelines or GuidelineClient()
         self.policies = policies or PolicyReader()
         self.repo = os.getenv("REMEDIATION_REPO", "")
+        # Cada advise abre una "generación"; el análisis del modelo solo se publica si
+        # sigue siendo la última (si no, llegó otro PipelineRun mientras pensaba).
+        self._lock = threading.Lock()
+        self._generation = 0
 
-    def advise(self, req: dict[str, Any]) -> dict[str, Any]:
-        containerfile = str(req.get("containerfile", ""))
-        result = analyze(
-            list(req.get("trivy") or []),
-            containerfile,
-            image=str(req.get("image", "")),
-            containerfile_path=str(req.get("containerfile_path", "Containerfile")),
-        )
+    def _attach_guidelines(self, recs: list[Any]) -> tuple[list[str], list[str]]:
+        """Lineamiento de cada recomendación, contrastado con la política de Kyverno."""
         missing, poisoned = [], []
-        for rec in result.recommendations:
+        for rec in recs:
             if rec.guideline_entity:
                 catalog = self.guidelines.get(rec.guideline_entity)
                 if catalog is None:
@@ -97,7 +99,10 @@ class RemediationAgent:
                 if rec.guideline and rec.guideline.get("integrity") == MISMATCH:
                     poisoned.append(rec.guideline["id"])
                     rec.detail = f"{rec.guideline['warning']} {rec.detail}"
-        explanation = rules_explanation(result)
+        return missing, poisoned
+
+    @staticmethod
+    def _with_warnings(explanation: str, missing: list[str], poisoned: list[str]) -> str:
         if poisoned:
             explanation = (
                 f"⚠ Posible envenenamiento de lineamientos: {', '.join(sorted(set(poisoned)))} "
@@ -105,6 +110,27 @@ class RemediationAgent:
             )
         if missing:
             explanation += f" (No pude leer del catálogo: {', '.join(sorted(set(missing)))}.)"
+        return explanation
+
+    def advise(self, req: dict[str, Any]) -> dict[str, Any]:
+        containerfile = str(req.get("containerfile", ""))
+        trivy = list(req.get("trivy") or [])
+        vulnerable = [
+            v.get("PkgName", "")
+            for r in trivy
+            for res in r.get("Results") or []
+            for v in res.get("Vulnerabilities") or []
+        ]
+        facts = image_facts(trivy, containerfile, vulnerable)
+        result = analyze(
+            trivy,
+            containerfile,
+            image=str(req.get("image", "")),
+            containerfile_path=str(req.get("containerfile_path", "Containerfile")),
+            facts=facts,
+        )
+        missing, poisoned = self._attach_guidelines(result.recommendations)
+        use_model = llm.llm_configured() and not req.get("rules_only")
         report = {
             "pipeline_run": str(req.get("pipeline_run", "manual")),
             "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -114,27 +140,83 @@ class RemediationAgent:
                 # Lo que el escaneo NO mira: severidades fuera del filtro no aparecen.
                 "severity_filter": str(req.get("severity_filter", "")),
             },
+            "facts": facts,
             "vulnerabilities": [asdict(v) for v in result.vulnerabilities],
             "summary": result.summary,
             "recommendations": [r.as_dict() for r in result.recommendations],
-            "explanation": explanation,
+            "explanation": self._with_warnings(rules_explanation(result), missing, poisoned),
             "engine": "rules",
+            # El modelo analiza en segundo plano; la etapa del pipeline no lo espera.
+            "analysis_status": "pending" if use_model else "rules-only",
+            "llm": None,
         }
-        # Un informe nuevo invalida las acciones preparadas sobre el anterior.
-        self.state.report, self.state.analysis, self.state.containerfile = (
-            report,
-            result,
-            containerfile,
-        )
-        self.state.actions.clear()
+        with self._lock:
+            self._generation += 1
+            generation = self._generation
+            # Un informe nuevo invalida las acciones preparadas sobre el anterior.
+            self.state.report, self.state.analysis, self.state.containerfile = (
+                report,
+                result,
+                containerfile,
+            )
+            self.state.actions.clear()
         log.info(
-            "informe %s: %d recomendaciones, sin leer: %s, envenenados: %s",
+            "informe %s (reglas): %d recomendaciones, sin leer: %s, envenenados: %s",
             report["pipeline_run"],
             len(report["recommendations"]),
             missing or "ninguno",
             poisoned or "ninguno",
         )
-        return report
+        # Copia antes de lanzar el modelo: el pipeline recibe el informe de reglas tal
+        # cual, aunque el modelo lo sustituya después en memoria.
+        snapshot = copy.deepcopy(report)
+        if use_model:
+            threading.Thread(
+                target=self._analyze_with_model,
+                args=(generation, result, facts, containerfile),
+                daemon=True,
+            ).start()
+        return snapshot
+
+    def _analyze_with_model(
+        self, generation: int, result: Analysis, facts: dict[str, Any], containerfile: str
+    ) -> None:
+        """El análisis del modelo, verificado. Sustituye al de reglas si sigue vigente."""
+        try:
+            verified = llm_analysis.run(result, facts, containerfile)
+            recs = llm_analysis.to_recommendations(verified, result)
+            if not recs:
+                raise ValueError("el modelo no dejó ninguna prioridad verificable")
+        except Exception as exc:  # noqa: BLE001 - sin modelo, queda el análisis por reglas
+            log.warning("el modelo no pudo analizar: %s", exc)
+            with self._lock:
+                if generation == self._generation and self.state.report:
+                    self.state.report["analysis_status"] = "failed"
+                    self.state.report["llm_error"] = str(exc)[:300]
+            return
+        missing, poisoned = self._attach_guidelines(recs)
+        model_result = replace(result, recommendations=recs)
+        with self._lock:
+            if generation != self._generation or not self.state.report:
+                return  # llegó otro análisis mientras el modelo pensaba
+            report = self.state.report
+            report["recommendations"] = [r.as_dict() for r in recs]
+            report["explanation"] = self._with_warnings(verified["overview"], missing, poisoned)
+            report["engine"] = "llm"
+            report["analysis_status"] = "done"
+            report["llm"] = {k: v for k, v in verified.items() if k != "patch"} | {
+                "patch": {k: v for k, v in verified["patch"].items() if k != "patched"}
+            }
+            self.state.analysis = model_result
+            self.state.actions.clear()
+        log.info(
+            "informe %s (modelo %s, %.0f s): %d prioridades, %d correcciones del verificador",
+            report["pipeline_run"],
+            verified.get("model"),
+            verified.get("duration_s", 0),
+            len(recs),
+            len(verified["corrections"]),
+        )
 
     def handle_chat_port(self, context_id: str, raw: str) -> dict[str, Any]:
         try:
@@ -145,7 +227,8 @@ class RemediationAgent:
             req = {"skill": "chat", "message": raw}
         skill = req.get("skill")
         if skill == "latest-report":
-            return {"report": self.state.report}
+            with self._lock:  # el hilo del modelo puede estar sustituyéndolo
+                return {"report": copy.deepcopy(self.state.report)}
         if skill == "chat":
             return conversation.chat(self.state, context_id, str(req.get("message", "")), self.repo)
         if skill == "confirm-action":
