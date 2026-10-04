@@ -13,8 +13,9 @@ metadata:
   name: duel-devsecops
   title: Duelo DevSecOps (rojo vs azul)
   annotations:
-    # Pestaña ArgoCD: todas las Applications de la demo.
-    argocd/app-selector: app.kubernetes.io/part-of=black-alpaca-2026
+    # Pestaña ArgoCD: todas las Applications de la demo (clave sin "/": el plugin la
+    # pone en la URL y con "/" no encuentra la ruta).
+    argocd/app-selector: black-alpaca.session=ai-red-vs-blue-devsecops
     # Pestaña TechDocs: mkdocs.yml y docs/ junto a este archivo.
     backstage.io/techdocs-ref: dir:.
   description: >-

@@ -26,7 +26,7 @@ PR ─► sast ─► build ─► sbom ─► trivy-scan ─► remediation ─
 |---------|-------------|
 | **Overview** | Asistente DevSecOps: resumen de los PipelineRuns y acciones propuestas |
 | **Agente de remediación** | Último análisis del pipeline y chat con el agente |
-| **ArgoCD** | Las Applications de la demo (`app.kubernetes.io/part-of=black-alpaca-2026`) |
+| **ArgoCD** | Las Applications de la demo (`black-alpaca.session=ai-red-vs-blue-devsecops`) |
 | **TechDocs** | Esta documentación |
 
 Código y manifiestos: [repo de la charla](https://github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026/tree/main/session-2-ai-red-vs-blue-devsecops).
