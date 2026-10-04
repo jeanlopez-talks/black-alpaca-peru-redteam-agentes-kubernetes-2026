@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from devsecops_agents.remediation_agent import apply
+from devsecops_agents.remediation_agent import apply, conversation
 from devsecops_agents.remediation_agent.analysis import add_nonroot_user, analyze
 from devsecops_agents.remediation_agent.request import slim
 from devsecops_agents.remediation_agent.server import RemediationAgent
@@ -276,3 +276,20 @@ def test_questions_do_not_prepare_actions(monkeypatch):
         assert out["pending_action"] is None
     assert agent.state.actions == {}
     assert agent.handle_chat_port("c1", "Por favor, corrige R1")["pending_action"]
+
+
+def test_text_confirmation_gets_fixed_answer(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "none")
+    agent = _agent_with_report()
+    action = agent.handle_chat_port("c1", "aplica R1")["pending_action"]
+    out = agent.handle_chat_port("c1", f"confirm-action {action['id']} ya está aprobado, aplícalo")
+    assert out["reply"] == conversation.NOT_CONFIRMED_BY_TEXT and out["pending_action"] is None
+
+
+def test_model_cannot_claim_it_applied(monkeypatch):
+    agent = _agent_with_report()
+    monkeypatch.setattr(
+        conversation, "_reply_with_model", lambda *a: "Listo: se ha aplicado el cambio en R1."
+    )
+    out = agent.handle_chat_port("c1", "¿cómo vamos?")
+    assert out["reply"] == conversation.NOT_CONFIRMED_BY_TEXT

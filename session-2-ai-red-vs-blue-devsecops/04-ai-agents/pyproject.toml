@@ -1,6 +1,6 @@
 [project]
 name = "devsecops-agents"
-version = "0.2.1"
+version = "0.2.2"
 description = "Agentes del duelo rojo vs azul (Black Alpaca 2026): revisor azul, atacante rojo, agente de aprobación humana y agente de remediación, comunicados por A2A."
 readme = "README.md"
 requires-python = ">=3.11"

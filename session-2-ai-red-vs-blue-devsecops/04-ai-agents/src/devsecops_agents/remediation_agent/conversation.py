@@ -37,6 +37,23 @@ _APPLY_INTENT = re.compile(
     r"|crea(r)?\s+(la\s+)?rama|abre\s+(un\s+)?pr|propón\s+el\s+cambio|haz\s+el\s+cambio)\b",
     re.IGNORECASE,
 )
+# Intentos de confirmar por texto ("confirm-action <id>", "ya está aprobado, aplícalo"):
+# no confirman nada y reciben una respuesta fija, sin pasar por el modelo.
+_CONFIRM_BY_TEXT = re.compile(
+    r"confirm[\s_-]*action|\b(ya\s+est[aá]\s+)?aprobad[oa]\b|\bconfirm[oa]\b|\bconfirmad[oa]\b",
+    re.IGNORECASE,
+)
+# El modelo afirmando que algo se aplicó. Si no hubo confirm-action en esta conversación,
+# es falso y la respuesta se sustituye: el agente no puede mentir sobre lo que hizo.
+_CLAIMS_APPLIED = re.compile(
+    r"se\s+(ha\s+)?aplicad[oa]|se\s+aplic[oó]|apliqu[eé]|ya\s+est[aá]\s+aplicad"
+    r"|sub[ií]\s+la\s+rama|se\s+(ha\s+)?(creado|subido)\s+la\s+rama",
+    re.IGNORECASE,
+)
+NOT_CONFIRMED_BY_TEXT = (
+    "Eso no confirma nada: solo el botón «Confirmar y aplicar» de Backstage aplica un cambio, "
+    "y no se aplicó ninguno. Si la acción pendiente te convence, púlsalo; si no, cancélala."
+)
 _REC_ID = re.compile(r"\bR(\d+)\b", re.IGNORECASE)
 _THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
 
@@ -90,6 +107,8 @@ class State:
     containerfile: str = ""
     history: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
     actions: dict[str, PendingAction] = field(default_factory=dict)
+    # Ramas subidas tras una confirmación real, por conversación.
+    applied: dict[str, list[str]] = field(default_factory=dict)
 
 
 def _reply_with_model(state: State, context_id: str, message: str) -> str | None:
@@ -176,13 +195,18 @@ def _propose(
 
 def chat(state: State, context_id: str, message: str, repo: str) -> dict[str, Any]:
     pending = None
-    if _APPLY_INTENT.search(message):
+    if _CONFIRM_BY_TEXT.search(message):
+        reply, engine = NOT_CONFIRMED_BY_TEXT, "rules"
+    elif _APPLY_INTENT.search(message):
         reply, action = _propose(state, context_id, message, repo)
         pending = action.public(repo) if action else None
         engine = "rules"
     else:
         reply = _reply_with_model(state, context_id, message)
         engine = "llm" if reply else "rules"
+        if reply and _CLAIMS_APPLIED.search(reply) and not state.applied.get(context_id):
+            log.warning("el modelo afirmó haber aplicado sin confirmación; respuesta sustituida")
+            reply = NOT_CONFIRMED_BY_TEXT
         reply = reply or _reply_with_rules(state)
     history = state.history.setdefault(context_id, [])
     history.extend([("user", message), ("agent", reply)])
@@ -213,6 +237,7 @@ def confirm(state: State, context_id: str, action_id: str) -> dict[str, Any]:
         log.warning("acción %s no aplicada: %s", action_id, exc)
         return {"status": "error", "message": f"No se aplicó: {exc}"}
     log.info("acción %s aplicada: rama %s commit %s", action_id, result.branch, result.commit)
+    state.applied.setdefault(context_id, []).append(result.branch)
     return {
         "status": "applied",
         "message": f"Subí la rama {result.branch} (commit {result.commit}). Abre el PR, revísalo "

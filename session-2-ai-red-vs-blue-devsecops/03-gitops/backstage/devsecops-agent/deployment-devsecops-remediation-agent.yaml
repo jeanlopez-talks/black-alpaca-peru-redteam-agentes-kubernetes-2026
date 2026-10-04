@@ -38,7 +38,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: agent
-          image: ghcr.io/labjp-homelab/devsecops-agents:0.2.1
+          image: ghcr.io/labjp-homelab/devsecops-agents:0.2.2
           command: ["remediation-agent"]
           ports:
             - name: http
