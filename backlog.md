@@ -23,7 +23,7 @@ TechDocs salen del mismo sitio. Sin esto, el agente de E3 no tiene qué leer.
 | 1.1 | Definir las políticas de plataforma (API CEL `policies.kyverno.io/v1`): `runAsNonRoot`, `allowPrivilegeEscalation: false`, `drop: ALL`, `seccompProfile: RuntimeDefault`, `readOnlyRootFilesystem`, límite de memoria, imagen por digest (sin `:latest`). Cada regla con **ID estable** (`K8S-001`…) y anotaciones `title`, `category`, `severity` y `description`, que son la fuente de la documentación | homelab-gitops | políticas en Git, sincronizadas por Argo CD, cada una con su ID | P1 |
 | 1.2 | Desplegarlas en **Audit**, revisar los PolicyReports por namespace, corregir y pasar a **Enforce** namespace a namespace | homelab-gitops | ningún namespace de aplicación en Audit; excepciones documentadas | P2 |
 | 1.3 | Política de firma de las imágenes propias (`ghcr.io/labjp-homelab/*`, firmadas por Tekton Chains), primero en Audit | homelab-gitops | Audit sin violaciones durante una semana → Enforce | P1 |
-| 1.4 | **Investigar** si Kyverno puede validar también los Containerfile (políticas sobre JSON arbitrario y `kyverno apply` con JSON). Verificar en la documentación oficial antes de decidir; si no, Conftest con los mismos IDs (`CF-001`…) | charla → homelab-gitops | decisión escrita aquí con la fuente citada | P1 |
+| 1.4 | Reglas para Containerfile con Kyverno: `ValidatingPolicy` con `evaluation.mode: JSON` evaluada con `kyverno apply --json` (verificado en la documentación de Kyverno 1.19; `kyverno json scan` se retiró en 1.19). Falta elegir cómo convertir el Containerfile a JSON. IDs `CF-001`… | homelab-gitops | `kyverno apply` informa los IDs incumplidos de un Containerfile | P1 |
 | 1.5 | Shift-left: el mismo juego de políticas corre en el pipeline (`kyverno apply` sobre los manifiestos) en el golden path y en la etapa `iac-scan` del duelo | homelab-pipelines, charla | el pipeline informa los IDs incumplidos antes del build | P2 |
 
 ## E2 · Lineamientos publicados en Backstage (TechDocs)
@@ -32,7 +32,8 @@ TechDocs salen del mismo sitio. Sin esto, el agente de E3 no tiene qué leer.
 |---|------|-------|--------------|------|
 | 2.1 | Habilitar la generación de TechDocs. Hoy `runIn: docker` no funciona en el clúster. Opciones: `runIn: local` con `mkdocs-techdocs-core` en la imagen de Backstage (versiones fijadas con hash) o builder `external` en el CI. Elegir y justificar | homelab-gitops | una página TechDocs de prueba se ve en `backstage.labjp.xyz` | P2 |
 | 2.2 | Generar la documentación **desde las anotaciones de las políticas** de E1 (una página por regla: ID, qué exige, por qué, ejemplo correcto e incorrecto). Nada escrito a mano que pueda divergir | homelab-pipelines | cambiar una política regenera su página | P2 |
-| 2.3 | Entidad de catálogo `security-guidelines` (kind `Resource`) con `backstage.io/techdocs-ref` | homelab-gitops | aparece en el catálogo con su pestaña Docs | P2 |
+| 2.3 | Entidad de catálogo `security-guidelines` (kind `Resource`) con `backstage.io/techdocs-ref`, y **una entidad por regla** (kind `Resource`, `spec.type: security-policy`) generada desde las políticas: ID, severidad, qué exige, cómo corregir | homelab-gitops | aparecen en el catálogo; la de cada regla enlaza a su página | P2 |
+| 2.4 | **MCP de Backstage** (`@backstage/plugin-mcp-actions-backend`, oficial desde 1.40): `backend.actions.pluginSources: [catalog]`, un servidor filtrado a **solo** `get-catalog-entity` y `query-catalog-entities` (fuera `register-entity`/`unregister-entity`/`refresh`), token estático con `accessRestrictions` a `mcp-actions` y `catalog`, guardado en OpenBao | homelab-gitops | un cliente MCP lista las reglas y no puede registrar ni borrar entidades | P2 |
 
 ## E3 · Agente de remediación (laboratorio de la sesión 2)
 
@@ -42,7 +43,7 @@ agente prioriza, explica con el lineamiento y **propone** el cambio. Nunca aplic
 | # | Ítem | Dónde | Hecho cuando | Prio |
 |---|------|-------|--------------|------|
 | 3.1 | Módulo `remediation_agent` (servidor A2A, skill `advise`): entrada JSON de Trivy + resultados de políticas; salida de recomendaciones priorizadas y diff propuesto. Las versiones que corrigen salen de los datos de Trivy, nunca del LLM. Con tests | charla `04-ai-agents` | tests verdes; release `agents-v0.2.0` | P2 |
-| 3.2 | Lectura de lineamientos desde Backstage: API de TechDocs con un token estático de Backstage (`backend.auth.externalAccess`) restringido al plugin `techdocs`. Token en OpenBao (`apps/black-alpaca/remediation-agent`) y política en el rol `openbao_access` | charla, homelab-gitops, homelab-ansible | el agente cita el texto del lineamiento por su ID | P2 |
+| 3.2 | Lectura de lineamientos por el **MCP de Backstage** (2.4): el agente pide la entidad de la regla por su ID (la regla aplicable, no la prosa). Token en OpenBao (`apps/black-alpaca/remediation-agent`) y política en el rol `openbao_access` | charla, homelab-gitops, homelab-ansible | el agente cita la regla por su ID | P2 |
 | 3.3 | Despliegue en `devsecops-agent` (namespace con tokens): Deployment, Service, ExternalSecret y NetworkPolicies (entra solo la etapa `remediation`; sale a DNS, Backstage y vLLM). Ingress de Backstage y de vLLM abierto solo para su pod. Application propia en `talks/black-alpaca-2026` | charla, homelab-gitops | Synced/Healthy | P2 |
 | 3.4 | Pipeline: Trivy con salida JSON, etapa `iac-scan` en paralelo al SAST y etapa `remediation` (cliente A2A), ambas informativas | charla | el log del PipelineRun muestra las recomendaciones | P2 |
 | 3.5 | Cerrar el ciclo: aplicar la propuesta en un PR, reconstruir, reescanear y comprobar que el hallazgo desaparece | charla | evidencia en `04-ai-agents/evidence/` | P2 |
@@ -83,3 +84,4 @@ agente prioriza, explica con el lineamiento y **propone** el cambio. Nunca aplic
 - **Los límites de la demo viven en la plataforma:** el AppProject y las Applications de la sesión 2 están en homelab-gitops (3 oct 2026).
 - **Repo público** desde el 3 oct 2026, tras auditar el historial completo (sin secretos reales).
 - **Kyverno es la fuente de los lineamientos:** TechDocs y el agente derivan de las políticas, no al revés (3 oct 2026).
+- **Dónde viven y quién lee qué** (3 oct 2026): las políticas de plataforma en homelab-gitops (`components/platform/security-policies/`), aplicadas por Argo CD; las de la demo (`duel-*`) siguen namespaced en este repo. Las personas leen TechDocs; los agentes leen las reglas por el **MCP oficial de Backstage**, nunca la prosa (defensa del Acto 5).
