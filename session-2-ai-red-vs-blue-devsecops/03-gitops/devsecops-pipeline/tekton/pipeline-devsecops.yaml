@@ -253,7 +253,7 @@ spec:
               gl="$(cat "${SRC}/.gitleaks-rc" 2>/dev/null || echo 0)"
               echo "[sast] semgrep rc=${sg} gitleaks rc=${gl}"
               if [ "${sg}" != "0" ] || [ "${gl}" != "0" ]; then
-                echo "FINDINGS" > "$(results.status.path)"
+                printf '%s' "FINDINGS" > "$(results.status.path)"
                 echo "[sast] HALLAZGOS detectados (ver sast-semgrep.txt / sast-gitleaks.txt)."
                 if [ "$(params.sast-blocking)" = "true" ]; then
                   echo "[sast] sast-blocking=true -> el pipeline FALLA aqui."
@@ -261,7 +261,7 @@ spec:
                 fi
                 echo "[sast] sast-blocking=false -> INFORMATIVO, el pipeline continua."
               else
-                echo "OK" > "$(results.status.path)"
+                printf '%s' "OK" > "$(results.status.path)"
                 echo "[sast] sin hallazgos."
               fi
         volumes:
@@ -478,7 +478,7 @@ spec:
               set -euo pipefail
               echo "[sbom] SBOM generado por Syft (CycloneDX + SPDX):"
               ls -lh "$(workspaces.shared.path)"/sbom.*.json
-              echo "OK" > "$(results.sbom-status.path)"
+              printf '%s' "OK" > "$(results.sbom-status.path)"
 
     # === ETAPA 4: TRIVY-SCAN (Trivy REAL) ===================================
     # Trivy escanea la IMAGEN DEL REGISTRY Zot (trivy image --insecure
@@ -556,13 +556,13 @@ spec:
               # distinguimos buscando el texto de error de DB en el reporte.
               if grep -qiE "failed to download|unable to.*db|could not reach" "${REPORT}"; then
                 echo "[trivy] AVISO: no se pudo bajar la DB (sin egress?). FALLBACK -> SKIPPED."
-                echo "SKIPPED" > "$(results.status.path)"
+                printf '%s' "SKIPPED" > "$(results.status.path)"
               elif [ "${fs_rc}" -ne 0 ]; then
                 echo "[trivy] Vulnerabilidades de severidad $(params.trivy-severity) detectadas."
-                echo "FINDINGS" > "$(results.status.path)"
+                printf '%s' "FINDINGS" > "$(results.status.path)"
               else
                 echo "[trivy] Sin vulnerabilidades de la severidad fijada."
-                echo "OK" > "$(results.status.path)"
+                printf '%s' "OK" > "$(results.status.path)"
               fi
               echo "[trivy] NOTA: INFORMATIVO; no bloquea el gate (frontera real = gate + admision)."
 
@@ -709,7 +709,7 @@ spec:
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
-              echo "OK" > "$(results.sign-status.path)"
+              printf '%s' "OK" > "$(results.sign-status.path)"
               echo "[sign] FIRMA REAL de la imagen del registry por digest:"
               echo "[sign]   ${SIGNED_REF}"
               echo "[sign] cosign empujo la firma al registry Zot (artefacto OCI .sig"
@@ -888,7 +888,7 @@ spec:
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
-              echo "OK" > "$(results.verify-status.path)"
+              printf '%s' "OK" > "$(results.verify-status.path)"
               echo "[verify] FIRMA VALIDA. La supply chain de la IMAGEN esta intacta."
               echo "[verify] PUNTO DE CHARLA: la firma verifica porque el PR envenenado"
               echo "[verify] NO toco la imagen (solo CONFIG). La firma NO detecta el ataque."
@@ -961,7 +961,7 @@ spec:
               echo "${out2}"
               echo
               if [ "${rc1}" -ne 0 ] && [ "${rc2}" -ne 0 ]; then
-                echo "REJECTED" > "$(results.admission.path)"
+                printf '%s' "REJECTED" > "$(results.admission.path)"
                 echo "[deploy] ===== DEFENSA EN CAPAS ====="
                 echo "[deploy] El agente aprobó, la firma es válida y el agente TIENE credencial,"
                 echo "[deploy] pero Kyverno rechaza los dos intentos: sin aprobación humana, y"
@@ -969,7 +969,7 @@ spec:
                 echo "[deploy] es un humano que revisa el cambio y lo aprueba en Git."
                 exit 1
               fi
-              echo "ADMITTED" > "$(results.admission.path)"
+              printf '%s' "ADMITTED" > "$(results.admission.path)"
               echo "[deploy] FALLO DE CONTROL: la admisión dejó desplegar al agente."
         volumes:
           - name: sample-app-manifests
