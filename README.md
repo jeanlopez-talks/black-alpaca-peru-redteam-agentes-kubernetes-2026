@@ -55,6 +55,7 @@ Agrupado **por sesión**; cada sesión numerada en orden de flujo. Lo que usan a
 │   ├── platform-architecture.html      # diagrama: qué vive en el clúster y qué fuera, con los flujos
 │   ├── event-research-2025.md          # contexto de la edición anterior
 │   └── slides-index.html               # portada que enlaza ambas presentaciones
+├── backlog.md                      # ideas y trabajo pendiente, por épica y prioridad
 └── README.md
 ```
 

@@ -84,6 +84,13 @@ shared/                   classifier/ (ambas), gitops-architecture.md, platform-
 
 CFP cierra 5 oct 2026, 23:59 EDT = 10:59 PM Lima. Notificación a speakers: 12 oct 2026. Evento: 14 nov 2026.
 
+## Backlog
+
+- Toda idea nueva va primero a `backlog.md` (épica, ítem, dónde vive, cuándo está hecho, prioridad P0/P1/P2)
+  antes de construirse; las decisiones tomadas se anotan al final para no reabrirlas.
+- Orden acordado: primero el estándar de seguridad como políticas Kyverno (fuente única), luego TechDocs
+  generados desde ellas, luego el agente que las lee.
+
 ## Convenciones
 
 - Contenido en **español** con ortografía y acentos correctos. Identificadores técnicos (`bare-np`, `nsenter`, `CAP_SETUID`) en su forma original.
