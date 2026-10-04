@@ -97,7 +97,7 @@ spec:
       description: >-
         Imagen de los agentes (04-ai-agents/Containerfile), construida y firmada por la
         plataforma. El step del rojo la usa con el entrypoint `red-attacker`.
-      default: ghcr.io/labjp-homelab/devsecops-agents:0.2.4
+      default: ghcr.io/labjp-homelab/devsecops-agents:0.2.5
     - name: blue-reviewer-url
       type: string
       description: >-
@@ -626,12 +626,16 @@ spec:
           value: $(params.containerfile-repo-path)
         - name: sample-app-image
           value: $(params.sample-app-image)
+        - name: trivy-severity
+          value: $(params.trivy-severity)
       workspaces:
         - name: shared
           workspace: shared
       taskSpec:
         params:
           - name: agents-image
+            type: string
+          - name: trivy-severity
             type: string
           - name: remediation-agent-url
             type: string
@@ -662,6 +666,7 @@ spec:
               - --containerfile-path=$(params.containerfile-repo-path)
               - --pipeline-run=$(context.pipelineRun.name)
               - --image=$(params.sample-app-image)
+              - --severity=$(params.trivy-severity)
 
     # === ETAPA 5: SIGN (cosign, firma del supply chain) =====================
     # cosign firma la IMAGEN DEL REGISTRY Zot POR DIGEST con la CLAVE del duelo
