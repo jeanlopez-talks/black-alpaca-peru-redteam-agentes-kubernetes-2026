@@ -17,6 +17,11 @@
 #                    zot.registry.svc:5000/.../sample-app:latest); politica
 #                    HIGH/CRITICAL. Requiere egress (DB de vulnerabilidades).
 #                    INFORMATIVO (fallback documentado si la DB no baja). -> Result.
+#   4b. remediation  el AGENTE DE REMEDIACION (servicio A2A en devsecops-agent) recibe
+#                    los JSON de Trivy y el Containerfile y devuelve recomendaciones
+#                    priorizadas con su lineamiento (POD-101, IMG-002...) y el diff que
+#                    las corrige. INFORMATIVO: no aplica nada; en Backstage la persona
+#                    conversa con el agente y confirma (o no) cada corrección.
 #   5. sign          cosign firma la IMAGEN DEL REGISTRY POR DIGEST
 #                    (cosign sign zot.registry.svc:5000/.../sample-app@<digest>)
 #                    con la clave del duelo (Secret duel-cosign-keys). cosign SUBE
@@ -92,7 +97,7 @@ spec:
       description: >-
         Imagen de los agentes (04-ai-agents/Containerfile), construida y firmada por la
         plataforma. El step del rojo la usa con el entrypoint `red-attacker`.
-      default: ghcr.io/labjp-homelab/devsecops-agents:0.1.2
+      default: ghcr.io/labjp-homelab/devsecops-agents:0.2.0
     - name: blue-reviewer-url
       type: string
       description: >-
@@ -119,6 +124,16 @@ spec:
       type: string
       description: Severidades que Trivy reporta/cuenta como hallazgo (politica).
       default: "HIGH,CRITICAL"
+    - name: remediation-agent-url
+      type: string
+      description: >-
+        Puerta del pipeline del agente de remediación (solo la skill advise). La de
+        confirmar acciones está en otro puerto, al que este namespace no llega.
+      default: http://devsecops-remediation-agent.devsecops-agent.svc.cluster.local:8081/
+    - name: containerfile-repo-path
+      type: string
+      description: Ruta en el repo del Containerfile analizado (el único que el agente puede corregir).
+      default: session-2-ai-red-vs-blue-devsecops/03-gitops/devsecops-pipeline/sample-app/Containerfile
   workspaces:
     - name: shared
       description: Workspace compartido (fuente, imagen tar, SBOM, firmas, reportes).
@@ -582,6 +597,71 @@ spec:
                 printf '%s' "OK" > "$(results.status.path)"
               fi
               echo "[trivy] NOTA: INFORMATIVO; no bloquea el gate (frontera real = gate + admision)."
+
+              # Mismos escaneos en JSON para el agente de remediación (etapa remediation).
+              # Reutilizan la DB ya descargada y no cambian el estado de esta etapa.
+              trivy fs --scanners vuln,secret,misconfig --severity "$(params.trivy-severity)" \
+                --skip-db-update --skip-check-update --no-progress --format json \
+                --output "$(workspaces.shared.path)/trivy-fs.json" "${CTX}" >/dev/null 2>&1 || true
+              trivy image --insecure "${IMG}" --scanners vuln --severity "$(params.trivy-severity)" \
+                --skip-db-update --no-progress --format json \
+                --output "$(workspaces.shared.path)/trivy-image.json" >/dev/null 2>&1 || true
+              ls -l "$(workspaces.shared.path)"/trivy-*.json 2>/dev/null || echo "[trivy] AVISO: sin JSON para el agente."
+
+    # === ETAPA 4b: REMEDIATION (agente de remediación, INFORMATIVA) ===========
+    # Cliente A2A (`remediation-request`, imagen de los agentes) que envía los JSON de
+    # Trivy y el Containerfile al agente de remediación y deja su informe en el log (y en
+    # el agente, que lo muestra en Backstage). Solo alcanza la puerta `advise` del agente (NetworkPolicy): desde aquí,
+    # donde corre código del PR, no se puede confirmar ninguna acción. La conversación y la
+    # confirmación de cada corrección son de la persona, en Backstage.
+    - name: remediation
+      runAfter:
+        - trivy-scan
+      params:
+        - name: agents-image
+          value: $(params.agents-image)
+        - name: remediation-agent-url
+          value: $(params.remediation-agent-url)
+        - name: containerfile-repo-path
+          value: $(params.containerfile-repo-path)
+        - name: sample-app-image
+          value: $(params.sample-app-image)
+      workspaces:
+        - name: shared
+          workspace: shared
+      taskSpec:
+        params:
+          - name: agents-image
+            type: string
+          - name: remediation-agent-url
+            type: string
+          - name: containerfile-repo-path
+            type: string
+          - name: sample-app-image
+            type: string
+        workspaces:
+          - name: shared
+        steps:
+          - name: advise
+            image: $(params.agents-image)
+            workingDir: $(workspaces.shared.path)
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1001
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+            command: ["remediation-request"]
+            args:
+              - --agent-url=$(params.remediation-agent-url)
+              - --trivy=$(workspaces.shared.path)/trivy-fs.json
+              - --trivy=$(workspaces.shared.path)/trivy-image.json
+              - --containerfile=$(workspaces.shared.path)/ctx-sample-app/Containerfile
+              - --containerfile-path=$(params.containerfile-repo-path)
+              - --pipeline-run=$(context.pipelineRun.name)
+              - --image=$(params.sample-app-image)
 
     # === ETAPA 5: SIGN (cosign, firma del supply chain) =====================
     # cosign firma la IMAGEN DEL REGISTRY Zot POR DIGEST con la CLAVE del duelo

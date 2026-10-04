@@ -168,3 +168,32 @@ spec:
       ports:
         - protocol: TCP
           port: 6443
+---
+# Egress de la etapa remediation SOLO a la puerta `advise` del agente de remediación
+# (devsecops-agent:8081). La puerta de Backstage (:8080), la que confirma acciones, no es
+# alcanzable desde aquí: este namespace ejecuta código no confiable del PR.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-remediation-agent-egress
+  namespace: devsecops-duel
+  labels:
+    app.kubernetes.io/part-of: black-alpaca-2026
+    black-alpaca.session: ai-red-vs-blue-devsecops
+spec:
+  podSelector:
+    matchLabels:
+      tekton.dev/pipelineTask: remediation
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: devsecops-agent
+          podSelector:
+            matchLabels:
+              app: devsecops-remediation-agent
+      ports:
+        - protocol: TCP
+          port: 8081
