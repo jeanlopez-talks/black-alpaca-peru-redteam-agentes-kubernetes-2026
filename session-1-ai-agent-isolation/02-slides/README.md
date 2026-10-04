@@ -31,7 +31,7 @@ Barra de progreso arriba y contador de slide abajo a la derecha. Soporta deep-li
 1. Abre `index.html` en Chrome.
 2. Menú → **Imprimir** (`Cmd/Ctrl + P`).
 3. Destino: **Guardar como PDF**. Orientación **horizontal**, márgenes **Ninguno**, activa **Gráficos de fondo**.
-4. Para capturar todas las slides una por página, navega con `→` e imprime, o usa una extensión de captura. (El motor muestra una slide a la vez; el PDF directo exporta la slide activa.)
+4. Se exportan las 10 slides, una por página (16:9), sin la barra, el contador ni las notas.
 
 ## Contenido (10 slides, mapeados al esqueleto de 50 min)
 
