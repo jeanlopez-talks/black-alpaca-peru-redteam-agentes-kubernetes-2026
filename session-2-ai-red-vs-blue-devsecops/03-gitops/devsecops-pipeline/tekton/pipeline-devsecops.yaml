@@ -97,7 +97,7 @@ spec:
       description: >-
         Imagen de los agentes (04-ai-agents/Containerfile), construida y firmada por la
         plataforma. El step del rojo la usa con el entrypoint `red-attacker`.
-      default: ghcr.io/labjp-homelab/devsecops-agents:0.2.7
+      default: ghcr.io/labjp-homelab/devsecops-agents:0.3.0
     - name: blue-reviewer-url
       type: string
       description: >-
@@ -603,8 +603,10 @@ spec:
               trivy fs --scanners vuln,secret,misconfig --severity "$(params.trivy-severity)" \
                 --skip-db-update --skip-check-update --no-progress --format json \
                 --output "$(workspaces.shared.path)/trivy-fs.json" "${CTX}" >/dev/null 2>&1 || true
+              # --list-all-pkgs: el grafo de paquetes con el que el agente calcula qué
+              # carga de verdad la app (y el modelo analiza sobre hechos, no supuestos).
               trivy image --insecure "${IMG}" --scanners vuln --severity "$(params.trivy-severity)" \
-                --skip-db-update --no-progress --format json \
+                --list-all-pkgs --skip-db-update --no-progress --format json \
                 --output "$(workspaces.shared.path)/trivy-image.json" >/dev/null 2>&1 || true
               ls -l "$(workspaces.shared.path)"/trivy-*.json 2>/dev/null || echo "[trivy] AVISO: sin JSON para el agente."
 

@@ -37,7 +37,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: blue-reviewer
-          image: ghcr.io/labjp-homelab/devsecops-agents:0.2.7
+          image: ghcr.io/labjp-homelab/devsecops-agents:0.3.0
           command: ["blue-reviewer"]
           ports:
             - name: a2a
