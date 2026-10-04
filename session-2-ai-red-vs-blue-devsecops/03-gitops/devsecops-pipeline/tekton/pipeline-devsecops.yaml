@@ -92,7 +92,7 @@ spec:
       description: >-
         Imagen de los agentes (04-ai-agents/Containerfile), construida y firmada por la
         plataforma. El step del rojo la usa con el entrypoint `red-attacker`.
-      default: ghcr.io/labjp-homelab/devsecops-agents:0.1.1
+      default: ghcr.io/labjp-homelab/devsecops-agents:0.1.2
     - name: blue-reviewer-url
       type: string
       description: >-
