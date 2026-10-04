@@ -453,3 +453,16 @@ def test_slim_keeps_os_and_digest():
         }
     )
     assert out["Metadata"] == {"OS": {"Family": "redhat"}, "RepoDigests": ["r@sha256:1"]}
+
+
+def test_print_report_shows_summary_and_every_vulnerability(capsys):
+    from devsecops_agents.remediation_agent.request import _print_report
+
+    agent = RemediationAgent(guidelines=FakeGuidelines(), policies=FakePolicies())
+    report = agent.advise(
+        {"trivy": [TRIVY_FS, TRIVY_IMAGE], "containerfile": CONTAINERFILE, "image": "img:1"}
+    )
+    _print_report(report)
+    out = capsys.readouterr().out
+    assert "vulnerabilidades: 2" in out
+    assert "CVE-1 [HIGH] emacs-filesystem" in out and "CVE-2 [CRITICAL] openssl-libs" in out

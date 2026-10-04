@@ -57,13 +57,16 @@ def slim(report: dict[str, Any]) -> dict[str, Any]:
 def _print_report(report: dict[str, Any]) -> None:
     v = report["summary"]["vulnerabilities"]
     print(f"[remediation] {report['explanation']}")
-    for v in report.get("vulnerabilities", []):
-        fix = f"→ {v['fixed']}" if v["fixable"] else f"sin corrección ({v['status']})"
-        print(f"[remediation]    {v['id']} [{v['severity']}] {v['package']} {v['installed']} {fix}")
     print(
         f"[remediation] vulnerabilidades: {v['total']} (críticas {v['critical']}, "
         f"altas {v['high']}, con corrección {v['fixable']}, sin ella {v['unfixed']})"
     )
+    for vuln in report.get("vulnerabilities", []):
+        fix = f"→ {vuln['fixed']}" if vuln["fixable"] else f"sin corrección ({vuln['status']})"
+        print(
+            f"[remediation]    {vuln['id']} [{vuln['severity']}] {vuln['package']} "
+            f"{vuln['installed']} {fix}"
+        )
     for r in report["recommendations"]:
         g = (
             f" | lineamiento {r['guideline']['id']}: {r['guideline']['url']}"
@@ -123,7 +126,10 @@ def _run(args: argparse.Namespace) -> int:
         return 0
     if args.output:
         Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2))
-    _print_report(report)
+    try:
+        _print_report(report)
+    except Exception as exc:  # noqa: BLE001 - informativo: un fallo al imprimir no tumba el pipeline
+        print(f"[remediation] AVISO: no pude mostrar el informe ({exc}).")
     return 0
 
 
