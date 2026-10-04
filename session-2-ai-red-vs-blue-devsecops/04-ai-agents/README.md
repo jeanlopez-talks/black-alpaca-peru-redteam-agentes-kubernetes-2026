@@ -30,7 +30,7 @@ Cuatro agentes de IA que se comunican por **A2A** (protocolo Agent2Agent, `a2a-s
 
 ```bash
 uv sync                          # entorno con las versiones exactas del lock
-uv run pytest                    # 39 tests, incluido el ida y vuelta A2A
+uv run pytest                    # 40 tests, incluido el ida y vuelta A2A
 uv run ruff check src tests      # lint (incluye reglas de seguridad de Bandit)
 uv run run-duel                  # los 4 actos por A2A -> results/duel-results.json
 uv run run-duel --llm            # azul con LLM (vLLM local); sin LLM cae a reglas

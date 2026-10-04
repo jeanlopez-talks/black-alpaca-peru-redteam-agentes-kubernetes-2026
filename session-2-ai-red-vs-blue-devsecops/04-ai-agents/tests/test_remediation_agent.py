@@ -366,3 +366,19 @@ def test_unreadable_policy_marks_unverified():
     )
     g = next(r["guideline"] for r in report["recommendations"] if r.get("guideline"))
     assert g["integrity"] == "unverified"
+
+
+def test_model_markdown_emphasis_is_stripped(monkeypatch):
+    agent = _agent_with_report()
+
+    class FakeModel:
+        def invoke(self, msgs):
+            class Out:
+                content = "<think>x</think>Lo más urgente es **R1** (__POD-101__)."
+
+            return Out()
+
+    monkeypatch.setattr(conversation.llm, "llm_configured", lambda: True)
+    monkeypatch.setattr(conversation.llm, "build_chat_model", lambda **kw: FakeModel())
+    out = agent.handle_chat_port("c1", "¿qué es lo más urgente?")
+    assert out["reply"] == "Lo más urgente es R1 (POD-101)." and out["engine"] == "llm"

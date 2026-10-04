@@ -56,9 +56,12 @@ NOT_CONFIRMED_BY_TEXT = (
 )
 _REC_ID = re.compile(r"\bR(\d+)\b", re.IGNORECASE)
 _THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
+# Énfasis de Markdown: Backstage muestra el texto del agente como texto plano (nunca como
+# HTML), así que los ** y __ solo ensucian la respuesta.
+_EMPHASIS = re.compile(r"(\*\*|__)(.+?)\1", re.DOTALL)
 
 SYSTEM_PROMPT = """Eres el agente de remediación DevSecOps de un pipeline Tekton. Respondes en \
-español, breve y concreto.
+español, breve y concreto, en texto plano (sin Markdown).
 
 Tu trabajo: explicar el último análisis (hallazgos de Trivy y del Containerfile), qué \
 lineamiento de seguridad aplica a cada uno (por su ID, p. ej. POD-101) y qué cambio lo \
@@ -133,7 +136,8 @@ def _reply_with_model(state: State, context_id: str, message: str) -> str | None
             msgs.append(HumanMessage(text) if role == "user" else AIMessage(text))
         msgs.append(HumanMessage(message))
         out = model.invoke(msgs)
-        return _THINK.sub("", str(out.content)).strip() or None
+        text = _EMPHASIS.sub(r"\2", _THINK.sub("", str(out.content)))
+        return text.strip() or None
     except Exception as exc:  # noqa: BLE001 - sin modelo, el agente sigue con reglas
         log.warning("modelo no disponible para el chat: %s", exc)
         return None
