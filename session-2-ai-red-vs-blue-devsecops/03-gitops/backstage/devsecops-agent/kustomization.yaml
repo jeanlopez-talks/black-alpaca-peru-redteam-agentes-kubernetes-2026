@@ -23,3 +23,9 @@ resources:
   - deployment-backstage-devsecops-agent.yaml
   - service-backstage-devsecops-agent.yaml
   - networkpolicy-backstage-devsecops-agent.yaml
+  # Agente de remediación (mismo namespace, SecretStore y secreto de pull).
+  - serviceaccount-devsecops-remediation-agent.yaml
+  - externalsecret-devsecops-remediation-agent.yaml
+  - deployment-devsecops-remediation-agent.yaml
+  - service-devsecops-remediation-agent.yaml
+  - networkpolicy-devsecops-remediation-agent.yaml

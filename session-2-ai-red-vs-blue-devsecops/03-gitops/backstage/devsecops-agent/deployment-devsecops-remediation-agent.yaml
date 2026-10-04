@@ -1,0 +1,119 @@
+# Agente de remediación (04-ai-agents, entrypoint `remediation-agent`).
+#
+# Dos puertas, separadas por NetworkPolicy:
+#   :8080  Backstage: informe, chat, confirmar/cancelar acciones (la persona)
+#   :8081  pipeline: solo `advise` (la etapa remediation, que corre código no confiable)
+#
+# Lee lineamientos por MCP (agentgateway, con su cliente de Keycloak y la relación de
+# OpenFGA), conversa con el LLM local (vLLM) y, solo cuando la persona confirma, sube una
+# rama remediation/* al repo de la charla con su deploy key. No toca main ni el clúster.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devsecops-remediation-agent
+  namespace: devsecops-agent
+  labels:
+    app: devsecops-remediation-agent
+spec:
+  # Una réplica: el informe, la conversación y las acciones pendientes viven en memoria.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: devsecops-remediation-agent
+  template:
+    metadata:
+      labels:
+        app: devsecops-remediation-agent
+        backstage.io/kubernetes-id: devsecops-remediation-agent
+    spec:
+      serviceAccountName: devsecops-remediation-agent
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 0
+        # La deploy key se monta 0440 con grupo 1001: legible por el agente y no por otros.
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agent
+          image: ghcr.io/labjp-homelab/devsecops-agents:0.2.0
+          command: ["remediation-agent"]
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: advise
+              containerPort: 8081
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8080"
+            - name: ADVISE_PORT
+              value: "8081"
+            - name: PUBLIC_URL
+              value: http://devsecops-remediation-agent.devsecops-agent.svc.cluster.local/
+            - name: ADVISE_PUBLIC_URL
+              value: http://devsecops-remediation-agent.devsecops-agent.svc.cluster.local:8081/
+            - name: PYTHONDONTWRITEBYTECODE # raíz de solo lectura
+              value: "1"
+            # Lineamientos: MCP por agentgateway, con el JWT de su cliente de Keycloak.
+            - name: MCP_URL
+              value: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp
+            - name: OIDC_TOKEN_URL
+              value: https://auth.labjp.xyz/realms/homelab/protocol/openid-connect/token
+            - name: OIDC_CLIENT_ID
+              value: devsecops-remediation-agent
+            # Aplicar: único repo y único archivo que puede tocar, y su deploy key.
+            - name: REMEDIATION_REPO
+              value: jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026
+            - name: REMEDIATION_ALLOWED_PATH
+              value: session-2-ai-red-vs-blue-devsecops/03-gitops/devsecops-pipeline/sample-app/Containerfile
+            - name: REMEDIATION_SSH_KEY
+              value: /etc/remediation-git/ssh-privatekey
+            # Modelo local (sin salida a internet): solo conversa, no decide acciones.
+            - name: LLM_PROVIDER
+              value: openai-compatible
+            - name: LLM_MODEL
+              value: qwen3-8b
+            - name: OPENAI_BASE_URL
+              value: http://vllm.inference.svc.cluster.local:8000/v1
+          envFrom:
+            - secretRef:
+                name: devsecops-remediation-agent # OIDC_CLIENT_SECRET (OpenBao)
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            exec:
+              command: ["python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: git-key
+              mountPath: /etc/remediation-git
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: git-key
+          secret:
+            secretName: devsecops-remediation-agent-git
+            defaultMode: 0440
