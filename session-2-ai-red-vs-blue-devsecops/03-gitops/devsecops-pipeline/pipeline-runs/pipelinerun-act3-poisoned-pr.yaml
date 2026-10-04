@@ -1,0 +1,41 @@
+# ACTOS 2-3 — el PR envenenado. Prompt injection indirecta en config/deploy-notes.md:
+# el azul vulnerable APRUEBA, la firma VERIFICA (el ataque no toca la imagen) y el
+# agente intenta desplegar con su credencial. Kyverno lo rechaza dos veces: sin
+# aprobación humana y, falsificándola, por no venir de GitOps.
+#
+# Común a los tres actos: workspace RWX en nfs-writable (0770, sin permisos para
+# "others"; fsGroup 1000 para escribir sin 0777); el runner (duel-runner) sin token de
+# API; solo deploy-gitops usa sample-app-deployer, la credencial de despliegue.
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: duel-act3-poisoned-pr
+  namespace: devsecops-duel
+  annotations:
+    # Los PipelineRun son inmutables: cada sync lo reemplaza, es decir, relanza el acto.
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
+spec:
+  pipelineRef:
+    name: duel-devsecops
+  params:
+    - name: pr-diff
+      value: pr-02-poisoned.diff
+    - name: blue-reviewer-url
+      value: http://blue-reviewer.devsecops-duel.svc.cluster.local:9999/
+  workspaces:
+    - name: shared
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ReadWriteMany]
+          storageClassName: nfs-writable
+          resources:
+            requests:
+              storage: 1Gi
+  taskRunTemplate:
+    serviceAccountName: duel-runner
+    podTemplate:
+      securityContext:
+        fsGroup: 1000
+  taskRunSpecs:
+    - pipelineTaskName: deploy-gitops
+      serviceAccountName: sample-app-deployer

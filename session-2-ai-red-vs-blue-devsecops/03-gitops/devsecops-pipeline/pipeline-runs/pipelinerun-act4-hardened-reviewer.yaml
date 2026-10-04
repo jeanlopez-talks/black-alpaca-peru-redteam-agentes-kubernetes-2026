@@ -1,0 +1,35 @@
+# ACTO 4 — el mismo PR envenenado contra el azul ENDURECIDO (trata el diff como datos,
+# no como instrucciones): BLOQUEA y deploy-gitops no corre.
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: duel-act4-hardened-reviewer
+  namespace: devsecops-duel
+  annotations:
+    # Los PipelineRun son inmutables: cada sync lo reemplaza, es decir, relanza el acto.
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
+spec:
+  pipelineRef:
+    name: duel-devsecops
+  params:
+    - name: pr-diff
+      value: pr-02-poisoned.diff
+    - name: blue-reviewer-url
+      value: http://blue-reviewer-hardened.devsecops-duel.svc.cluster.local:9999/
+  workspaces:
+    - name: shared
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ReadWriteMany]
+          storageClassName: nfs-writable
+          resources:
+            requests:
+              storage: 1Gi
+  taskRunTemplate:
+    serviceAccountName: duel-runner
+    podTemplate:
+      securityContext:
+        fsGroup: 1000
+  taskRunSpecs:
+    - pipelineTaskName: deploy-gitops
+      serviceAccountName: sample-app-deployer

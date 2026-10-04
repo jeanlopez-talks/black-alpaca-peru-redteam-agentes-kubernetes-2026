@@ -1,0 +1,15 @@
+# Lo mínimo para un `kubectl apply --server-side` del Deployment de la app objetivo:
+# get y patch solo sobre `sample-app`; create no admite resourceNames en Kubernetes.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sample-app-deployer
+  namespace: devsecops-duel
+rules:
+  - apiGroups: [apps]
+    resources: [deployments]
+    resourceNames: [sample-app]
+    verbs: [get, patch]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [create]

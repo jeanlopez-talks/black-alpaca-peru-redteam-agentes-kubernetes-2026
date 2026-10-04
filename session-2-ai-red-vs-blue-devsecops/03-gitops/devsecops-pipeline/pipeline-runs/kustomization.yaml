@@ -1,0 +1,16 @@
+# Un PipelineRun por acto de la demo. Los sincroniza la Application
+# ai-red-vs-blue-devsecops-pipeline-runs con sync MANUAL: sincronizar un PipelineRun es
+# lanzar ese acto (ver ../README.md).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: black-alpaca-2026
+      black-alpaca.session: ai-red-vs-blue-devsecops
+    includeSelectors: false
+
+resources:
+  - pipelinerun-act1-obvious-pr.yaml
+  - pipelinerun-act3-poisoned-pr.yaml
+  - pipelinerun-act4-hardened-reviewer.yaml

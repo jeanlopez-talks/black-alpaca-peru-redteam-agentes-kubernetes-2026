@@ -2,10 +2,12 @@
 # trivy-scan -> sign -> gate-blue -> verify -> deploy-gitops). Ver README.md.
 #
 #   base/        ServiceAccount del runner, NetworkPolicies, config del LLM
-#                (el namespace lo crea la Application de admission-policies, con Pod Security)
+#                (el namespace lo crea la gobernanza del homelab, con Pod Security)
 #   agents/      agente azul (vulnerable y endurecido) como servicio A2A en sandbox
-#   tekton/      Pipeline + PipelineRun del PR envenenado (el rojo es un step)
-#   sample-app/  la app objetivo (fuente de la imagen + manifiestos que despliega Argo CD)
+#   tekton/      el Pipeline (el rojo es un step de gate-blue)
+#   pipeline-runs/ un PipelineRun por acto (Application propia, sync manual)
+#   sample-app/  la app objetivo (fuente de la imagen + manifiestos que despliega Argo CD,
+#                Application propia)
 #   fixtures/    entrada realista para la etapa SAST
 #
 # Fuera de este kustomize: las policies de Kyverno (../admission-policies/,
@@ -25,9 +27,13 @@ labels:
 
 resources:
   - base/serviceaccount-duel-runner.yaml
+  - base/serviceaccount-sample-app-deployer.yaml
+  - base/role-sample-app-deployer.yaml
+  - base/rolebinding-sample-app-deployer.yaml
   - base/serviceaccount-openbao-reader.yaml
   - base/secretstore-openbao.yaml
   - base/externalsecret-duel-cosign-keys.yaml
+  - base/externalsecret-ghcr-pull.yaml
   - base/networkpolicies-egress.yaml
   - base/llm-config.yaml
   - agents/serviceaccount-blue-reviewer.yaml
@@ -37,7 +43,6 @@ resources:
   - agents/service-blue-reviewer-hardened.yaml
   - agents/networkpolicy-blue-reviewer.yaml
   - tekton/pipeline-devsecops.yaml
-  - tekton/pipelinerun-poisoned-pr.yaml
 
 # ConfigMaps que el pipeline materializa en runtime, generados desde los mismos
 # archivos versionados (una sola fuente de verdad).
@@ -46,9 +51,9 @@ configMapGenerator:
     files:
       - sample-app/Containerfile
       - sample-app/index.html
-  - name: duel-argo-app-src         # etapa deploy-gitops: la Application de Argo CD
+  - name: sample-app-manifests      # etapa deploy-gitops: lo que el agente intenta aplicar
     files:
-      - sample-app/application-sample-app.yaml
+      - sample-app/deployment-sample-app.yaml
   - name: duel-sast-input           # etapa sast: el config del PR envenenado
     files:
       - fixtures/deploy-notes.md

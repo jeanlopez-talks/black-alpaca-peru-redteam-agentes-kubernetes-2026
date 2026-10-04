@@ -1,5 +1,5 @@
-# Lo que sincroniza la Application de Argo CD de la app de ejemplo
-# (application-sample-app.yaml). La fuente de la imagen (Containerfile +
+# Lo que sincroniza la Application ai-red-vs-blue-devsecops-sample-app (homelab-gitops,
+# bootstrap/applications/talks/black-alpaca-2026). La fuente de la imagen (Containerfile +
 # index.html) la consume la etapa build del pipeline, no este kustomize.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

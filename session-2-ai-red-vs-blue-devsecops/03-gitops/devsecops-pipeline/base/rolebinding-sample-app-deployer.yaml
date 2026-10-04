@@ -1,0 +1,14 @@
+# Liga la identidad de la etapa deploy-gitops a su Role (role-sample-app-deployer.yaml).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sample-app-deployer
+  namespace: devsecops-duel
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sample-app-deployer
+subjects:
+  - kind: ServiceAccount
+    name: sample-app-deployer
+    namespace: devsecops-duel

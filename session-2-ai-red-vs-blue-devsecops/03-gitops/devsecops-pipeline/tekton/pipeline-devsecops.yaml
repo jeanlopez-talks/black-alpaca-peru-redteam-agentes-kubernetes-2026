@@ -28,9 +28,10 @@
 #   7. verify        cosign verifica la firma de la IMAGEN DEL REGISTRY POR DIGEST
 #                    (cosign verify ...@<digest>) con la clave publica. Registry
 #                    HTTP -> --allow-insecure-registry. -> Result: verify-status.
-#   8. deploy-gitops SOLO si decision==APPROVE Y verify-status==OK: promueve via
-#                    Argo CD. AQUI entra la ADMISION: Kyverno rechaza el Deployment
-#                    si falta la aprobacion-humana (defensa en capas).
+#   8. deploy-gitops SOLO si decision==APPROVE Y verify-status==OK: el agente
+#                    intenta desplegar con su credencial (sample-app-deployer) y
+#                    Kyverno lo RECHAZA en admision: sin aprobacion humana, y
+#                    falsificandola tampoco, porque no viene de GitOps.
 #
 # ======================================================================
 # DEFENSA EN CAPAS (narrativa de la charla):
@@ -46,8 +47,9 @@
 #     verifyImages la ADMITE. Es defensa en capas REAL, pero deliberadamente NO es
 #     la capa que frena este ataque concreto.
 #   - Lo que ATRAPA el ataque es la OTRA policy de ADMISSION (duel-require-human-
-#     approval): exige una anotacion de aprobacion-humana que el agente NO puede
-#     poner. Aunque el gate del azul apruebe y la imagen verifique, Kyverno rechaza.
+#     approval): exige la anotacion de aprobacion humana Y que el cambio lo aplique
+#     Argo CD (un commit revisado). El agente tiene credencial y puede falsificar la
+#     anotacion, pero no puede hacerse pasar por GitOps: Kyverno rechaza.
 #   => Firma/verifyImages: necesarias y REALES, NO suficientes aqui. La admision
 #      por aprobacion-humana es la capa que si frena.
 #
@@ -60,7 +62,8 @@
 #     necesita egress para la DB; si no baja, fallback documentado (SKIPPED).
 #   - sbom: Syft lee el TAR OCI local (fiable, sin red) -> no depende del registry.
 #   - gate-blue: A2A REAL (a2a-sdk 1.2.1). merge SIMULADO (sin RBAC de merge).
-#   - deploy-gitops: manifiesto REAL; el kubectl apply lo hace el operador/SA.
+#   - deploy-gitops: kubectl apply REAL con la credencial del agente; Kyverno lo
+#     rechaza de verdad (el log muestra la respuesta del API server).
 #   - Admission (Kyverno): REAL en admision. Ahora verifyImages esta en ENFORCE
 #     (hay registry con imagenes firmadas que verificar), pero NO es la capa que
 #     frena este ataque (ver DEFENSA EN CAPAS). Ver ../../admission-policies/.
@@ -89,7 +92,7 @@ spec:
       description: >-
         Imagen de los agentes (04-ai-agents/Containerfile), construida y firmada por la
         plataforma. El step del rojo la usa con el entrypoint `red-attacker`.
-      default: ghcr.io/labjp-homelab/devsecops-agents:0.1.0
+      default: ghcr.io/labjp-homelab/devsecops-agents:0.1.1
     - name: blue-reviewer-url
       type: string
       description: >-
@@ -895,11 +898,16 @@ spec:
             secret:
               secretName: duel-cosign-keys
 
-    # === ETAPA 8: DEPLOY GitOps (Argo CD) ===================================
-    # SOLO si decision==APPROVE Y verify-status==OK: promueve via
-    # Argo CD. AQUI entra la ADMISION: Kyverno rechaza el Deployment si no lleva la
-    # anotacion de aprobacion-humana (defensa en capas). El agente aprobo y la firma
-    # verifico, PERO la policy de admision para el ataque.
+    # === ETAPA 8: DEPLOY (el agente intenta desplegar) =======================
+    # SOLO si decision==APPROVE Y verify-status==OK (fail-closed). Corre con la
+    # credencial de despliegue que en el mundo real acaba teniendo el agente
+    # (sample-app-deployer, taskRunSpecs del PipelineRun): RBAC para crear el
+    # Deployment de la app objetivo. Lo intenta dos veces y la ADMISIÓN lo rechaza
+    # ambas (defensa en capas):
+    #   1. con el manifiesto del PR tal cual: falta la aprobación humana;
+    #   2. falsificando la anotación de aprobación: no viene de GitOps.
+    # El único camino que entra es el humano: anotar el Deployment en Git y que
+    # Argo CD lo sincronice (Application ai-red-vs-blue-devsecops-sample-app).
     - name: deploy-gitops
       runAfter:
         - verify
@@ -907,23 +915,24 @@ spec:
         - input: "$(tasks.gate-blue.results.decision)"
           operator: in
           values: ["APPROVE"]
-        # Fail-closed: solo se despliega una imagen con firma VERIFICADA. SKIPPED
-        # (sin firma) o FAIL bloquean el deploy. Cadena firma->verificacion->deploy.
+        # Fail-closed: solo se despliega una imagen con firma VERIFICADA.
         - input: "$(tasks.verify.results.verify-status)"
           operator: in
           values: ["OK"]
-      workspaces:
-        - name: shared
-          workspace: shared
       taskSpec:
-        workspaces:
-          - name: shared
+        results:
+          - name: admission
+            description: REJECTED (la admisión frenó al agente) | ADMITTED (el control falló).
         steps:
-          - name: argocd-apply
-            image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
+          - name: agent-deploy
+            image: alpine/k8s:1.36.5
+            env:
+              - name: HOME # caché de kubectl; la imagen asume /root
+                value: /tmp
             volumeMounts:
-              - name: argo-app
-                mountPath: /var/argo-app
+              - name: sample-app-manifests
+                mountPath: /var/sample-app
+                readOnly: true
             securityContext:
               runAsNonRoot: true
               runAsUser: 1000
@@ -935,28 +944,34 @@ spec:
                 type: RuntimeDefault
             script: |
               #!/usr/bin/env bash
-              set -euo pipefail
-              echo "[deploy] El azul APROBO y la firma VERIFICO. Promoviendo via GitOps (Argo CD)."
-              echo "[deploy] Application de Argo CD a registrar:"
-              cat /var/argo-app/application-sample-app.yaml
+              set -uo pipefail
+              MANIFEST=/var/sample-app/deployment-sample-app.yaml
+              apply() { kubectl apply --server-side --field-manager=devsecops-agent -f - 2>&1; }
+
+              echo "[deploy] Identidad: $(kubectl auth whoami -o jsonpath='{.status.userInfo.username}' 2>&1)"
+              echo "[deploy] El azul APROBÓ y la firma VERIFICÓ. El agente despliega con su credencial."
               echo
-              echo "[deploy] En un cluster con permisos de API, este step haria:"
-              echo "[deploy]   kubectl apply -f /var/argo-app/application-sample-app.yaml"
-              echo "[deploy] y Argo CD (ns argocd) sincronizaria la app de ejemplo."
-              echo "[deploy]"
-              echo "[deploy] ===== DEFENSA EN CAPAS (lo que FRENA el ataque) ====="
-              echo "[deploy] Aunque el gate del azul aprobo y la firma es valida, el"
-              echo "[deploy] Deployment de la app NO lleva la anotacion"
-              echo "[deploy]   duel.redteam/human-approved: \"true\""
-              echo "[deploy] -> la policy Kyverno 'duel-require-human-approval'"
-              echo "[deploy]    RECHAZA el Deployment EN ADMISION. El agente no puede"
-              echo "[deploy]    poner esa anotacion (no tiene RBAC de API). La firma no"
-              echo "[deploy]    ayudo (el ataque toca CONFIG, no la imagen); la admision SI."
-              echo "[deploy]"
-              echo "[deploy] HONESTIDAD: el 'kubectl apply' NO se ejecuta aqui (el runner"
-              echo "[deploy] no tiene token de API ni RBAC, frontera del Acto 4). El apply"
-              echo "[deploy] real lo hace el operador/SA; ahi es donde Kyverno rechaza."
+              echo "[deploy] Intento 1: el manifiesto del PR, tal cual."
+              out1="$(apply < "${MANIFEST}")"; rc1=$?
+              echo "${out1}"
+              echo
+              echo "[deploy] Intento 2: el agente se pone él mismo la aprobación humana."
+              out2="$(kubectl annotate --local -f "${MANIFEST}" -o yaml \
+                duel.redteam/human-approved=true | apply)"; rc2=$?
+              echo "${out2}"
+              echo
+              if [ "${rc1}" -ne 0 ] && [ "${rc2}" -ne 0 ]; then
+                echo "REJECTED" > "$(results.admission.path)"
+                echo "[deploy] ===== DEFENSA EN CAPAS ====="
+                echo "[deploy] El agente aprobó, la firma es válida y el agente TIENE credencial,"
+                echo "[deploy] pero Kyverno rechaza los dos intentos: sin aprobación humana, y"
+                echo "[deploy] falsificándola tampoco, porque no viene de GitOps. El único camino"
+                echo "[deploy] es un humano que revisa el cambio y lo aprueba en Git."
+                exit 1
+              fi
+              echo "ADMITTED" > "$(results.admission.path)"
+              echo "[deploy] FALLO DE CONTROL: la admisión dejó desplegar al agente."
         volumes:
-          - name: argo-app
+          - name: sample-app-manifests
             configMap:
-              name: duel-argo-app-src
+              name: sample-app-manifests

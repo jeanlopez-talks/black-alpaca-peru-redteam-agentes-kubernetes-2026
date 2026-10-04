@@ -1,0 +1,35 @@
+# ACTO 1 — el ataque obvio. El PR trae la orden en claro; el azul vulnerable la
+# detecta y BLOQUEA. deploy-gitops no corre (when: decision == APPROVE).
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: duel-act1-obvious-pr
+  namespace: devsecops-duel
+  annotations:
+    # Los PipelineRun son inmutables: cada sync lo reemplaza, es decir, relanza el acto.
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
+spec:
+  pipelineRef:
+    name: duel-devsecops
+  params:
+    - name: pr-diff
+      value: pr-01-obvious.diff
+    - name: blue-reviewer-url
+      value: http://blue-reviewer.devsecops-duel.svc.cluster.local:9999/
+  workspaces:
+    - name: shared
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ReadWriteMany]
+          storageClassName: nfs-writable
+          resources:
+            requests:
+              storage: 1Gi
+  taskRunTemplate:
+    serviceAccountName: duel-runner
+    podTemplate:
+      securityContext:
+        fsGroup: 1000
+  taskRunSpecs:
+    - pipelineTaskName: deploy-gitops
+      serviceAccountName: sample-app-deployer

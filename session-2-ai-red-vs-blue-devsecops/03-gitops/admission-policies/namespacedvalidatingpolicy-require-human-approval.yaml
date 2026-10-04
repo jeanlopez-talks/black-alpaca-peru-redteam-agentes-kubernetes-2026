@@ -1,10 +1,16 @@
-# LA CAPA QUE FRENA EL ATAQUE: exige aprobación humana en los Deployment del duelo.
+# LA CAPA QUE FRENA EL ATAQUE: los Deployment del duelo solo entran por GitOps y con
+# aprobación humana.
 #
 # El agente azul puede aprobar el PR envenenado y la firma puede verificar (el ataque
-# toca config, no la imagen), pero sin la anotación `duel.redteam/human-approved: "true"`
-# el Deployment se rechaza en admisión. El agente no puede ponerla: su ServiceAccount no
-# tiene token de API ni RBAC (../devsecops-pipeline/base/serviceaccount-duel-runner.yaml).
-# Solo la añade un humano al revisar el cambio en Git.
+# toca config, no la imagen). Dos condiciones, y hacen falta las dos:
+#
+#   1. La anotación `duel.redteam/human-approved: "true"`: la pone un humano en Git al
+#      revisar el cambio.
+#   2. Que quien escribe sea el controlador de Argo CD, es decir, que el cambio venga de
+#      un commit del repo. Sin esto la anotación sería solo un texto: cualquier identidad
+#      con permiso de crear Deployments (la del agente, en la etapa deploy del pipeline)
+#      podría ponérsela a sí misma. Con esto, aunque el agente tenga credenciales y
+#      falsifique la anotación, la admisión lo rechaza.
 #
 # Namespaced: solo aplica en devsecops-duel; no puede afectar al resto del clúster.
 apiVersion: policies.kyverno.io/v1
@@ -13,7 +19,7 @@ metadata:
   name: duel-require-human-approval
   namespace: devsecops-duel
   annotations:
-    policies.kyverno.io/title: Exigir aprobación humana en devsecops-duel
+    policies.kyverno.io/title: Exigir GitOps y aprobación humana en devsecops-duel
     policies.kyverno.io/category: Supply Chain / Admission Control
     policies.kyverno.io/severity: high
 spec:
@@ -35,3 +41,9 @@ spec:
         RECHAZADO POR ADMISIÓN: el Deployment no tiene la anotación
         'duel.redteam/human-approved: "true"'. El gate del agente azul pudo aprobar
         el PR, pero el deploy exige aprobación humana real.
+    - expression: >-
+        request.userInfo.username == 'system:serviceaccount:argocd:argocd-application-controller'
+      messageExpression: >-
+        'RECHAZADO POR ADMISIÓN: ' + request.userInfo.username + ' no puede desplegar en
+        devsecops-duel. Solo entra lo que llega por GitOps (un commit revisado en Git),
+        aunque traiga la anotación de aprobación humana.'

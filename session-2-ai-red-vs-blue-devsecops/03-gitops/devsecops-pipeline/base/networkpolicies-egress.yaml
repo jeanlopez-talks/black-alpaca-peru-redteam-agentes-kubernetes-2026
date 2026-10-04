@@ -146,3 +146,25 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+---
+# Egress al API server SOLO para la etapa deploy-gitops (el intento de despliegue del
+# agente con su credencial). La regla se evalúa tras el DNAT del Service `kubernetes`,
+# así que el destino es el control plane (kube-master), no la ClusterIP.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-deploy-to-apiserver
+  namespace: devsecops-duel
+spec:
+  podSelector:
+    matchLabels:
+      tekton.dev/pipelineTask: deploy-gitops
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.10.41/32
+      ports:
+        - protocol: TCP
+          port: 6443

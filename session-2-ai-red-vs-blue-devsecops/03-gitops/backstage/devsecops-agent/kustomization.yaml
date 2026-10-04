@@ -3,7 +3,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: devsecops-agent
+# Sin `namespace:` a propósito: el Role de lectura vive en devsecops-duel, y kustomize
+# lo movería a devsecops-agent. Cada manifiesto declara su namespace.
 
 labels:
   - pairs:
@@ -18,6 +19,7 @@ resources:
   - role-read-pipelineruns.yaml
   - rolebinding-read-pipelineruns.yaml
   - externalsecret-backstage-devsecops-agent.yaml
+  - externalsecret-ghcr-pull.yaml
   - deployment-backstage-devsecops-agent.yaml
   - service-backstage-devsecops-agent.yaml
   - networkpolicy-backstage-devsecops-agent.yaml
