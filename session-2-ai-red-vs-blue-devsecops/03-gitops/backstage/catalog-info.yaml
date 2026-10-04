@@ -11,7 +11,7 @@ apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
   name: ai-red-vs-blue-devsecops
-  title: Duelo IA en DevSecOps (agente rojo vs agente azul)
+  title: Agentes de IA en DevSecOps (agente rojo vs agente azul)
   annotations:
     # Pestaña ArgoCD: todas las Applications de la demo (clave sin "/": el plugin la
     # pone en la URL y con "/" no encuentra la ruta).
@@ -34,7 +34,7 @@ metadata:
   name: devsecops-pipeline
   title: Pipeline DevSecOps (SAST, build, Trivy, firma, revisión IA, despliegue)
   description: >-
-    Pipeline Tekton 'devsecops-pipeline' en el namespace devsecops-duel: SAST, build, SBOM, Trivy,
+    Pipeline Tekton 'devsecops-pipeline': SAST, build, SBOM, Trivy,
     firma, gate del agente azul, verificación y deploy GitOps. Kyverno frena el
     deploy sin aprobación humana.
   annotations:

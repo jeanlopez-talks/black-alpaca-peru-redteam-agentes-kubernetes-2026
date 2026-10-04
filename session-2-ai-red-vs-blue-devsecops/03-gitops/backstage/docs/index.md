@@ -1,4 +1,4 @@
-# Duelo DevSecOps (rojo vs azul)
+# Agentes de IA en DevSecOps (rojo vs azul)
 
 Demo de la sesión 2 de Black Alpaca 2026: un pipeline Tekton donde dos agentes de IA se
 enfrentan (el rojo ataca, el azul revisa) y otros dos ayudan a la persona, que es quien
