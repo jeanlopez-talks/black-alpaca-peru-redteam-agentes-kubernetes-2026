@@ -5,6 +5,9 @@ kind: PipelineRun
 metadata:
   name: duel-act4-hardened-reviewer
   namespace: devsecops-duel
+  labels:
+    # Backstage (componente duel-pipeline): pestañas Kubernetes y Tekton.
+    backstage.io/kubernetes-id: duel-pipeline
   annotations:
     # Los PipelineRun son inmutables: cada sync lo reemplaza, es decir, relanza el acto.
     argocd.argoproj.io/sync-options: Force=true,Replace=true

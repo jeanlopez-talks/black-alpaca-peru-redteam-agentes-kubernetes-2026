@@ -2,7 +2,10 @@
 # Location apuntando a este archivo en el repo. Las anotaciones conectan cada plugin:
 #   argocd/app-name              -> pestaña Argo CD
 #   tekton.dev/cicd + k8s-id     -> pestaña Tekton (PipelineRun/TaskRun)
-#   backstage.io/kubernetes-id   -> plugin Kubernetes (recursos por etiqueta)
+#   backstage.io/kubernetes-id   -> plugin Kubernetes: busca los recursos con la etiqueta
+#                                   `backstage.io/kubernetes-id: <valor>` (la llevan los
+#                                   PipelineRun, que Tekton propaga a TaskRun y pods, y los
+#                                   pods de cada agente)
 apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
@@ -28,7 +31,7 @@ metadata:
   annotations:
     argocd/app-name: ai-red-vs-blue-devsecops-sample-app
     tekton.dev/cicd: "true"
-    backstage.io/kubernetes-id: duel-devsecops
+    backstage.io/kubernetes-id: duel-pipeline
     backstage.io/kubernetes-namespace: devsecops-duel
   tags: [tekton, kyverno, supply-chain]
 spec:
