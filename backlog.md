@@ -50,12 +50,12 @@ agente prioriza, explica con el lineamiento y **propone** el cambio. Nunca aplic
 
 | # | Ítem | Dónde | Hecho cuando | Prio |
 |---|------|-------|--------------|------|
-| 3.1 | Módulo `remediation_agent` (servidor A2A, skill `advise`): entrada JSON de Trivy + resultados de políticas; salida de recomendaciones priorizadas y diff propuesto. Las versiones que corrigen salen de los datos de Trivy, nunca del LLM. Con tests | charla `04-ai-agents` | tests verdes; release `agents-v0.2.0` | P1 |
-| 3.2 | El agente lee la regla por su ID con `backstage_get-catalog-entity` / `query-catalog-entities` a través del gateway (la regla aplicable, no la prosa), autenticado con su propio cliente de Keycloak (6.2) y autorizado por OpenFGA (6.3) | charla | el agente cita la regla por su ID; una herramienta no concedida devuelve 403 | P1 |
-| 3.3 | Despliegue en `devsecops-agent` (namespace con tokens): Deployment, Service, ExternalSecret y NetworkPolicies (entra solo la etapa `remediation`; sale a DNS, Backstage y vLLM). Ingress de Backstage y de vLLM abierto solo para su pod. Application propia en `talks/black-alpaca-2026` | charla, homelab-gitops | Synced/Healthy | P1 |
-| 3.4 | Pipeline: Trivy con salida JSON, etapa `iac-scan` en paralelo al SAST y etapa `remediation` (cliente A2A), ambas informativas | charla | el log del PipelineRun muestra las recomendaciones | P1 |
-| 3.5 | Cerrar el ciclo: aplicar la propuesta en un PR, reconstruir, reescanear y comprobar que el hallazgo desaparece | charla | evidencia en `04-ai-agents/evidence/` | P2 |
-| 3.6 | Mostrar el informe del agente de remediación en la tarjeta del Asistente DevSecOps de Backstage | homelab-gitops | visible en la página de `duel-devsecops` | P2 |
+| 3.1 | ✅ **Hecho (4 oct 2026, `agents-v0.2.2`):** módulo `remediation_agent` (A2A, dos puertas): `advise` convierte el JSON de Trivy + Containerfile en recomendaciones priorizadas con su diff; versiones y conteos salen de Trivy, nunca del LLM. 36 tests | charla `04-ai-agents` | tests verdes; release publicada | P1 |
+| 3.2 | ✅ **Hecho:** el agente lee la regla por ID con `backstage_catalog.get-catalog-entity` vía agentgateway, con su cliente de Keycloak y la relación `can_call` de OpenFGA (AVD-DS-0002 → POD-101; FROM sin digest → IMG-002) | charla | el agente cita la regla por su ID | P1 |
+| 3.3 | ✅ **Hecho:** desplegado en `devsecops-agent` junto al agente de aprobación (misma Application): puerta `:8081` solo para la etapa `remediation`, `:8080` solo para Backstage; sale a DNS, agentgateway, Keycloak, vLLM y GitHub:22 | charla, homelab-gitops | Synced/Healthy | P1 |
+| 3.4 | ✅ **Hecho:** Trivy deja además los JSON y la etapa `remediation` (informativa) llama al agente; el log muestra R1..R4 con lineamiento y diff | charla | el log del PipelineRun muestra las recomendaciones | P1 |
+| 3.5 | 🔄 **Parte hecha:** al confirmar en el chat, el agente sube la rama `remediation/<run>` (deploy key solo de este repo; `main` protegida por ruleset, verificado). Falta: abrir el PR, merge, reescanear y comprobar que AVD-DS-0002 desaparece | charla | evidencia en `04-ai-agents/evidence/` | P2 |
+| 3.6 | 🔄 **Parte hecha:** tarjeta "Agente de remediación" en la página de `duel-devsecops`: informe + chat + acción pendiente con diff y botones Confirmar/Cancelar (human in the loop). Probado el backend con las mismas peticiones; falta verla con sesión iniciada | homelab-gitops | visible en la página de `duel-devsecops` | P2 |
 
 ## E4 · Acto 5: envenenar los lineamientos que lee el agente
 
@@ -91,6 +91,7 @@ agente prioriza, explica con el lineamiento y **propone** el cambio. Nunca aplic
 - **Un agente de remediación, no uno por etapa:** menos identidades, menos tokens, menos superficie (3 oct 2026).
 - **Los límites de la demo viven en la plataforma:** el AppProject y las Applications de la sesión 2 están en homelab-gitops (3 oct 2026).
 - **Repo público** desde el 3 oct 2026, tras auditar el historial completo (sin secretos reales).
+- **Human in the loop del agente de remediación** (4 oct 2026): el modelo solo conversa; el servidor prepara la acción con el diff exacto y solo el botón Confirmar (skill `confirm-action`, misma conversación, 15 min) la ejecuta. Aplicar = rama `remediation/*`, nunca `main`. La verdad sobre lo que hizo el agente la dice el sistema, no el modelo.
 - **agentgateway es la única fachada MCP** (4 oct 2026): federa los servidores MCP y autoriza cada herramienta con los roles del JWT, ocultando en `tools/list` lo no concedido. Se retiró el MCP Gateway de Kuadrant (broker/router, `mcp-system`, `mcp.labjp.xyz`): exigía Istio o parches de Envoy a mano y no filtraba la lista. Decisión completa en homelab-gitops `docs/mcp-platform/decision-agentgateway-only-mcp-facade.md`.
 - **Kyverno es la fuente de los lineamientos:** TechDocs y el agente derivan de las políticas, no al revés (3 oct 2026).
 - **Dónde viven y quién lee qué** (3 oct 2026): las políticas de plataforma en su **propio repo público** `labjp-homelab/homelab-security-policies` (nombre consistente con `homelab-gitops`, `homelab-pipelines`…; licencia Apache-2.0), versionado con tags y aplicado por Argo CD; las de la demo (`duel-*`) siguen namespaced en este repo. Las personas leen TechDocs; los agentes leen las reglas por el **MCP oficial de Backstage**, nunca la prosa (defensa del Acto 5).

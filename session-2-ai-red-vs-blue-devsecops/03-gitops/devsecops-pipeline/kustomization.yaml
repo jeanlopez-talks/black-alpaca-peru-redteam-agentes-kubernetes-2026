@@ -1,5 +1,5 @@
-# Pipeline DevSecOps del duelo rojo vs azul (8 etapas: sast -> build -> sbom ->
-# trivy-scan -> sign -> gate-blue -> verify -> deploy-gitops). Ver README.md.
+# Pipeline DevSecOps del duelo rojo vs azul (9 etapas: sast -> build -> sbom ->
+# trivy-scan -> remediation -> sign -> gate-blue -> verify -> deploy-gitops). Ver README.md.
 #
 #   base/        ServiceAccount del runner, NetworkPolicies, config del LLM
 #                (el namespace lo crea la gobernanza del homelab, con Pod Security)

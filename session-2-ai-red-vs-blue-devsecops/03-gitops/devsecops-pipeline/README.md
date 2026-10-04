@@ -1,6 +1,6 @@
 # DevSecOps pipeline — duelo rojo vs azul (k3s)
 
-Pipeline Tekton de 8 etapas donde dos agentes de IA se enfrentan dentro de un flujo
+Pipeline Tekton de 9 etapas donde dos agentes de IA se enfrentan dentro de un flujo
 DevSecOps con supply chain real. El agente rojo abre un PR envenenado; el azul (revisor)
 decide el merge. Se comunican por **A2A**.
 
@@ -29,7 +29,7 @@ devsecops-pipeline/                    Application ai-red-vs-blue-devsecops-pipe
 │   ├── service-*.yaml, serviceaccount-blue-reviewer.yaml (sin token de API)
 │   └── networkpolicy-blue-reviewer.yaml   entra solo el rojo; sale solo a DNS y LLM
 ├── tekton/
-│   └── pipeline-devsecops.yaml            Pipeline `duel-devsecops` (8 etapas)
+│   └── pipeline-devsecops.yaml            Pipeline `duel-devsecops` (9 etapas)
 ├── pipeline-runs/                     Application …-pipeline-runs (sync MANUAL = lanzar el acto)
 │   ├── pipelinerun-act1-obvious-pr.yaml       el azul bloquea el ataque obvio
 │   ├── pipelinerun-act3-poisoned-pr.yaml      el azul aprueba; Kyverno frena al agente
@@ -45,14 +45,15 @@ devsecops-pipeline/                    Application ai-red-vs-blue-devsecops-pipe
 
 Las policies de Kyverno (namespaced) viven aparte, en `../admission-policies/`.
 
-## Las 8 etapas
+## Las 9 etapas
 
 | # | Etapa | Herramienta | Qué hace | ¿Bloquea? |
 |---|-------|-------------|----------|-----------|
 | 1 | `sast` | semgrep 1.90 + gitleaks 8.21 | SAST y secretos sobre la fuente del PR | Informativo (`sast-blocking`) |
 | 2 | `build` | kaniko 1.23 | construye la imagen y la **empuja a Zot**; guarda el digest | Sí |
 | 3 | `sbom` | Syft 1.18 | SBOM CycloneDX + SPDX | No |
-| 4 | `trivy-scan` | Trivy 0.58 | escanea la imagen de Zot (`HIGH,CRITICAL`) | Informativo |
+| 4 | `trivy-scan` | Trivy 0.58 | escanea la imagen de Zot (`HIGH,CRITICAL`); deja además los informes en JSON | Informativo |
+| 4b | `remediation` | agente de remediación (A2A) | envía los JSON de Trivy y el Containerfile; el log muestra las recomendaciones con su lineamiento y el diff | Informativo; las correcciones se confirman en Backstage |
 | 5 | `sign` | cosign 2.4.1 | firma la imagen **por digest**; la firma queda en Zot | Sí |
 | 6 | `gate-blue` | agentes A2A | el rojo (step, cliente A2A) envía el PR al azul (servicio A2A en sandbox) → `APPROVE`/`BLOCK` | Su decisión alimenta el `when` |
 | 7 | `verify` | cosign 2.4.1 | verifica la firma por digest con la clave pública | Sí |

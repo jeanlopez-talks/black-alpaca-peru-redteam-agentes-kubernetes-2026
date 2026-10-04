@@ -12,9 +12,10 @@ metadata:
   name: duel-devsecops
   title: Duelo DevSecOps (rojo vs azul)
   description: >-
-    Flujo DevSecOps del duelo: pipeline Tekton de 8 etapas, admisión Kyverno y
-    despliegue GitOps por Argo CD. El agente human-in-the-loop resume y propone
-    acciones sobre este sistema.
+    Flujo DevSecOps del duelo: pipeline Tekton de 9 etapas, admisión Kyverno y
+    despliegue GitOps por Argo CD. Dos agentes con la persona en el bucle: el de
+    aprobación resume y propone acciones; el de remediación explica los hallazgos con
+    sus lineamientos y solo aplica una corrección cuando la confirmas.
   tags: [redteam, devsecops, black-alpaca-2026]
 spec:
   owner: labjp-homelab
