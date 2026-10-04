@@ -7,6 +7,7 @@ charla:
 ```
 backstage/
 ├── catalog-info.yaml        entidades del catálogo (System, Components, API)
+├── mkdocs.yml, docs/        TechDocs del sistema: el flujo y cómo usar los agentes
 └── devsecops-agent/         agentes con la persona en el bucle (namespace devsecops-agent):
                              aprobación y remediación
 ```
@@ -23,7 +24,9 @@ En la página del sistema `duel-devsecops` aparecen:
 | CI/CD (Tekton) | PipelineRuns con `backstage.io/kubernetes-id: duel-pipeline` |
 | Argo CD | `ai-red-vs-blue-devsecops-sample-app`, con token de solo lectura |
 | **Asistente DevSecOps** | el agente de aprobación, por el proxy `/devsecops-agent` del portal |
-| **Agente de remediación** | informe del último análisis + chat, por el proxy `/remediation-agent` |
+| **Agente de remediación** (pestaña propia) | informe del último análisis + chat, por el proxy `/remediation-agent` |
+| ArgoCD (en el System) | todas las Applications de la demo, por `argocd/app-selector` |
+| TechDocs | `mkdocs.yml` + `docs/` de esta carpeta |
 
 ## Agente de aprobación
 

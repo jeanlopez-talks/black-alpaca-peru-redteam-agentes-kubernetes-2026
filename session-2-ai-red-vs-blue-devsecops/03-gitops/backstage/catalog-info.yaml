@@ -1,6 +1,7 @@
 # Catálogo de Backstage de la charla. El portal (plataforma del homelab) lo registra como
 # Location apuntando a este archivo en el repo. Las anotaciones conectan cada plugin:
-#   argocd/app-name              -> pestaña Argo CD
+#   argocd/app-name              -> pestaña Argo CD (en el System: argocd/app-selector)
+#   backstage.io/techdocs-ref    -> pestaña TechDocs (mkdocs.yml + docs/)
 #   tekton.dev/cicd + k8s-id     -> pestaña Tekton (PipelineRun/TaskRun)
 #   backstage.io/kubernetes-id   -> plugin Kubernetes: busca los recursos con la etiqueta
 #                                   `backstage.io/kubernetes-id: <valor>` (la llevan los
@@ -11,6 +12,11 @@ kind: System
 metadata:
   name: duel-devsecops
   title: Duelo DevSecOps (rojo vs azul)
+  annotations:
+    # Pestaña ArgoCD: todas las Applications de la demo.
+    argocd/app-selector: app.kubernetes.io/part-of=black-alpaca-2026
+    # Pestaña TechDocs: mkdocs.yml y docs/ junto a este archivo.
+    backstage.io/techdocs-ref: dir:.
   description: >-
     Flujo DevSecOps del duelo: pipeline Tekton de 9 etapas, admisión Kyverno y
     despliegue GitOps por Argo CD. Dos agentes con la persona en el bucle: el de
