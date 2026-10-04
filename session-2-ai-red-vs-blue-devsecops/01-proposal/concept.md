@@ -88,7 +88,7 @@ clúster OpenShift 4.22 real** (evidencia en `../04-ai-agents/evidence/openshift
 Idea para evolucionar la demo (post supply chain):
 - **Backstage** como portal de developer (IDP) — la "cara" donde el humano ve los PRs, el estado del
   pipeline Tekton, los resultados de seguridad (SAST/Trivy/SBOM/firma) y la decisión del agente.
-  Encaja con el clúster: ya tiene Argo CD, Tekton, kagent, mcp-system (Backstage tiene plugins nativos
+  Encaja con el clúster: ya tiene Argo CD, Tekton, kagent, agentgateway (Backstage tiene plugins nativos
   de Argo CD y Tekton).
 - **Agente interactivo** (vía plugin AI / MCP de Backstage): el humano conversa con un agente que
   **propone y actúa con aprobación humana (human-in-the-loop)**: resume qué hizo cada etapa, por qué se
