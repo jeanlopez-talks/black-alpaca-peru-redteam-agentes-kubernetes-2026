@@ -154,7 +154,7 @@ spec:
             type: string
         results:
           - name: status
-            description: OK (sin hallazgos) | FINDINGS (semgrep/gitleaks dispararon).
+            description: OK (sin hallazgos) | FINDINGS (semgrep/gitleaks dispararon) | ERROR (no se pudo escanear).
         workspaces:
           - name: shared
         stepTemplate:
@@ -179,8 +179,11 @@ spec:
               #!/usr/bin/env bash
               set -euo pipefail
               SRC="$(workspaces.shared.path)/sast-src"
-              rm -rf "$SRC" 2>/dev/null || true
+              # Se vacía el contenido, no el directorio: semgrep y gitleaks lo tienen como
+              # workingDir desde que arranca el pod, y borrarlo les deja un directorio
+              # inexistente (en NFS, "stale file handle") y un escaneo vacío.
               mkdir -p "$SRC"
+              find "$SRC" -mindepth 1 -delete
               # Fuente de la app + el config del PR (incluye el deploy-notes envenenado).
               cp -r /var/sast-src/* "$SRC/" 2>/dev/null || true
               echo "[sast] fuente a escanear:"
@@ -228,10 +231,13 @@ spec:
               REPORT="$(workspaces.shared.path)/sast-gitleaks.txt"
               echo "=== gitleaks (secret scanning) ===" > "${REPORT}"
               # 'detect --no-git': escanea el filesystem (no hay repo .git aqui).
+              # Sin tubería: con `| tee`, $? sería el de tee y un fallo de gitleaks
+              # pasaría por "sin secretos".
               gitleaks detect --no-git --source . --report-format json \
                 --report-path "$(workspaces.shared.path)/gitleaks-report.json" \
-                --verbose 2>&1 | tee -a "${REPORT}"
+                --verbose >> "${REPORT}" 2>&1
               rc=$?
+              cat "${REPORT}"
               echo "[sast] gitleaks exit=${rc} (0=sin secretos, 1=secretos hallados)" | tee -a "${REPORT}"
               echo "${rc}" > "$(workspaces.shared.path)/.gitleaks-rc"
           # --- veredicto SAST: informativo o bloqueante ------------------------
@@ -252,6 +258,13 @@ spec:
               sg="$(cat "${SRC}/.semgrep-rc" 2>/dev/null || echo 0)"
               gl="$(cat "${SRC}/.gitleaks-rc" 2>/dev/null || echo 0)"
               echo "[sast] semgrep rc=${sg} gitleaks rc=${gl}"
+              # semgrep: 1 = hallazgos, >= 2 = error. Un error no es "sin hallazgos".
+              if [ "${sg}" -ge 2 ]; then
+                printf '%s' "ERROR" > "$(results.status.path)"
+                echo "[sast] ERROR: semgrep no pudo escanear (ver sast-semgrep.txt)."
+                [ "$(params.sast-blocking)" = "true" ] && exit 1
+                exit 0
+              fi
               if [ "${sg}" != "0" ] || [ "${gl}" != "0" ]; then
                 printf '%s' "FINDINGS" > "$(results.status.path)"
                 echo "[sast] HALLAZGOS detectados (ver sast-semgrep.txt / sast-gitleaks.txt)."
@@ -535,20 +548,24 @@ spec:
               CTX="$(workspaces.shared.path)/ctx-sample-app"
               IMG="$(params.sample-app-image)"
 
+              # Sin tuberías (`| tee`): $? sería el de tee y el estado saldría siempre OK.
+              # --exit-code 1 => 1 si hay hallazgos de la severidad fijada.
+
               # Escaneo de filesystem del contexto de build (secret/misconfig).
               trivy fs --scanners vuln,secret,misconfig \
                 --severity "$(params.trivy-severity)" --no-progress \
-                --exit-code 1 "${CTX}" 2>&1 | tee -a "${REPORT}"
+                --exit-code 1 "${CTX}" >> "${REPORT}" 2>&1
               fs_rc=$?
 
               # Escaneo de la IMAGEN DEL REGISTRY Zot (pull desde el registry HTTP
               # interno -> --insecure). Es la imagen REAL empujada en build.
-              echo "[trivy] escaneando imagen del registry: ${IMG}" | tee -a "${REPORT}"
+              echo "[trivy] escaneando imagen del registry: ${IMG}" >> "${REPORT}"
               trivy image --insecure "${IMG}" --scanners vuln \
                 --severity "$(params.trivy-severity)" --no-progress \
-                --exit-code 1 2>&1 | tee -a "${REPORT}" || true
+                --exit-code 1 >> "${REPORT}" 2>&1
+              img_rc=$?
 
-              echo "[trivy] ---- reporte ----"
+              echo "[trivy] ---- reporte (fs rc=${fs_rc}, imagen rc=${img_rc}) ----"
               cat "${REPORT}"
 
               # FALLBACK documentado: si Trivy no pudo bajar la DB (sin egress), su
@@ -557,7 +574,7 @@ spec:
               if grep -qiE "failed to download|unable to.*db|could not reach" "${REPORT}"; then
                 echo "[trivy] AVISO: no se pudo bajar la DB (sin egress?). FALLBACK -> SKIPPED."
                 printf '%s' "SKIPPED" > "$(results.status.path)"
-              elif [ "${fs_rc}" -ne 0 ]; then
+              elif [ "${fs_rc}" -ne 0 ] || [ "${img_rc}" -ne 0 ]; then
                 echo "[trivy] Vulnerabilidades de severidad $(params.trivy-severity) detectadas."
                 printf '%s' "FINDINGS" > "$(results.status.path)"
               else
