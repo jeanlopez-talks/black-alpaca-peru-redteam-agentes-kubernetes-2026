@@ -31,7 +31,7 @@ spec:
   # CreateNamespace=true y queremos permitir todos los del lab sin enumerarlos.
   destinations:
     # Todos los namespaces del lab siguen el prefijo openclaw-* (patron
-    # gateway/sandbox/vault por postura, ver ../../../shared/lab-conventions.md). Se usa comodin
+    # gateway/sandbox/vault por postura, ver ../../04-attack-lab/lab-conventions.md). Se usa comodin
     # para cubrir tambien los openclaw-<postura>-vault de la frontera 3 sin
     # enumerar uno por uno y sin que el ApplicationSet rompa al anadir posturas.
     - server: https://kubernetes.default.svc

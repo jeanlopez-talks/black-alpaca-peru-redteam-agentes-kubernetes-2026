@@ -7,9 +7,9 @@ Scripts que producen **resultados reales propios** para la charla de Black Alpac
    laptop, sin clúster. Muestra que el score de un clasificador real cae al
    cambiar solo el verbo de la instruccion.
 2. **Fronteras de contencion** (`privilege-escalation/` + `boundary-probes/`) — corre contra las 4
-   posturas de aislamiento desplegadas en un clúster (ver `../03-gitops/`). Mide las 6 fronteras de `../../shared/lab-conventions.md`.
+   posturas de aislamiento desplegadas en un clúster (ver `../03-gitops/`). Mide las 6 fronteras de `lab-conventions.md`.
 
-Lee primero [`../../shared/lab-conventions.md`](../../shared/lab-conventions.md) (las 6 fronteras,
+Lee primero [`lab-conventions.md`](lab-conventions.md) (las 6 fronteras,
 los 8 vectores con su mecanismo de kernel, los tokens canario) y
 [`../../README.md`](../../README.md) (contexto y el caso del clasificador con Morse).
 

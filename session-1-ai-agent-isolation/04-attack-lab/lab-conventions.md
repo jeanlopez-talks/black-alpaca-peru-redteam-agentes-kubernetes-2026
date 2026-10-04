@@ -68,9 +68,9 @@ verificar la fuga DESDE FUERA del agente (no confiar en el reporte del propio ag
 
 ## Argo CD
 
-- Proyecto: `redteam-agents`
+- Proyecto: `ai-agent-isolation`
 - `ApplicationSet` con un generador `list` de las 4 posturas → una `Application` por postura.
-- Repo apunta a `../session-1-ai-agent-isolation/03-gitops/isolation-postures/<postura>` con Kustomize.
+- Repo apunta a `../03-gitops/isolation-postures/<postura>` con Kustomize.
 - Operator de Sandboxed Containers se instala por su propia `Application` (sync-wave -1).
 
 ## Reglas de honestidad (van en el README y en la charla)

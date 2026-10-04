@@ -38,7 +38,8 @@ session-1-ai-agent-isolation/      PROPUESTA 1 — agente como víctima (aislami
   01-proposal/            sessionize-proposal.md, technical-paper.md, one-pager.md (→ PDF adjunto)
   02-slides/              index.html
   03-gitops/              argocd/, operators/sandboxed-containers/, isolation-postures/{bare,bare-np,ssh,kata}/
-  04-attack-lab/          privilege-escalation/ (8 vectores), boundary-probes/ (fronteras + collect-results.sh → results/)
+  04-attack-lab/          lab-conventions.md (contrato de nombres/valores), privilege-escalation/ (8 vectores),
+                          boundary-probes/ (fronteras + collect-results.sh → results/)
 session-2-ai-red-vs-blue-devsecops/           PROPUESTA 2 — duelo rojo vs azul en pipeline DevSecOps
   01-proposal/            sessionize-proposal.md, concept.md (diseño en 4 actos)
   02-slides/              index.html
@@ -46,7 +47,7 @@ session-2-ai-red-vs-blue-devsecops/           PROPUESTA 2 — duelo rojo vs azul
                           admission-policies/, backstage/  (sus Applications: en homelab-gitops)
   04-ai-agents/           paquete Python (uv) de los 3 agentes A2A: blue_reviewer, red_attacker,
                           approval_agent (+ duel/, tests/, evidence/, Containerfile)
-shared/                   classifier/ (ambas), lab-conventions.md, gitops-architecture.md,
+shared/                   classifier/ (ambas), gitops-architecture.md, platform-architecture.html,
                           event-research-2025.md, slides-index.html (portada de ambas)
 ```
 

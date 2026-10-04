@@ -3,7 +3,7 @@
 # probe-boundaries.sh
 # -------------------
 # Se ejecuta DENTRO del pod sandbox (uid 1000, sin credenciales) y mide las
-# otras 5 fronteras de ../../../shared/lab-conventions.md (la frontera 4, priv-escalation,
+# otras 5 fronteras de ../lab-conventions.md (la frontera 4, priv-escalation,
 # la cubre escalation-probe.sh):
 #
 #   gateway-creds         ¿puede leer el secret de credenciales del gateway?

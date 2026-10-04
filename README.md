@@ -41,17 +41,16 @@ Agrupado **por sesión**; cada sesión numerada en orden de flujo. Lo que usan a
 │   ├── 01-proposal/                    # sessionize-proposal.md, technical-paper.md, one-pager.md (→ PDF)
 │   ├── 02-slides/                      # presentación HTML offline
 │   ├── 03-gitops/                      # Argo CD: AppProject + ApplicationSet, isolation-postures/ (4), operator Kata
-│   └── 04-attack-lab/                  # ataques y medición: privilege-escalation/ (8 vectores), boundary-probes/
+│   └── 04-attack-lab/                  # lab-conventions.md (contrato), privilege-escalation/ (8 vectores), boundary-probes/
 │
 ├── session-2-ai-red-vs-blue-devsecops/                 # PROPUESTA 2 — rojo vs azul en el pipeline DevSecOps
 │   ├── 01-proposal/                    # sessionize-proposal.md, concept.md (4 actos)
 │   ├── 02-slides/
-│   ├── 03-gitops/                      # Argo CD: devsecops-pipeline/ (Tekton 8 etapas), admission-policies/ (Kyverno), backstage/
+│   ├── 03-gitops/                      # devsecops-pipeline/ (Tekton 8 etapas, un PipelineRun por acto), admission-policies/ (Kyverno), backstage/
 │   └── 04-ai-agents/                   # agentes A2A (uv): azul, rojo y aprobación + evidence/
 │
 ├── shared/                         # común a ambas
 │   ├── classifier/                     # clasificador de prompt injection (resultados propios)
-│   ├── lab-conventions.md              # contrato de nombres/valores del laboratorio
 │   ├── gitops-architecture.md          # plataforma (repo homelab) vs config de demo (este repo)
 │   ├── platform-architecture.html      # diagrama: qué vive en el clúster y qué fuera, con los flujos
 │   ├── event-research-2025.md          # contexto de la edición anterior

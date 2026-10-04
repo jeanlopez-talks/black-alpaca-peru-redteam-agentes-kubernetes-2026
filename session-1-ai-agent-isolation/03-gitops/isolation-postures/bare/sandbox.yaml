@@ -1,7 +1,7 @@
 # Postura `bare` — SANDBOX (ejecución de herramientas, uid 1000, SIN credenciales).
 # Es el pod desde el que se lanzan los probes de las 6 fronteras y los 8 vectores
 # de escalada de privilegios. SecurityContext IDÉNTICO en las 4 posturas (ver
-# ../../../../shared/lab-conventions.md): caps dropped, runAsNonRoot, seccomp RuntimeDefault y
+# ../../../04-attack-lab/lab-conventions.md): caps dropped, runAsNonRoot, seccomp RuntimeDefault y
 # automountServiceAccountToken:false.
 # En `bare` el sandbox comparte namespace con el gateway y NO hay NetworkPolicy,
 # por lo que las fronteras de red y de credenciales se espera que FALLEN.
@@ -46,7 +46,7 @@ spec:
         - name: sandbox
           image: registry.access.redhat.com/ubi9/ubi-minimal
           command: ["sleep", "infinity"]
-          # SecurityContext EXACTO del contrato (../../../../shared/lab-conventions.md).
+          # SecurityContext EXACTO del contrato (../../../04-attack-lab/lab-conventions.md).
           securityContext:
             runAsNonRoot: true
             # En OpenShift NO se fija runAsUser/runAsGroup: la SCC restricted-v2

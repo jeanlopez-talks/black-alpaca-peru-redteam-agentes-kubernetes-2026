@@ -4,7 +4,7 @@
 # ----------------------------
 # Helper que ejecuta escalation-probe.sh DENTRO del pod sandbox de una postura.
 # Detecta oc o kubectl, resuelve el namespace sandbox de la postura segun
-# ../../../shared/lab-conventions.md, inyecta el probe via stdin a `exec` y recoge el resultado.
+# ../lab-conventions.md, inyecta el probe via stdin a `exec` y recoge el resultado.
 #
 # Posturas validas: bare | bare-np | ssh | kata
 #
@@ -29,7 +29,7 @@ fi
 POSTURE="$1"
 
 # ---------------------------------------------------------------------------
-# 2. Resolver el namespace sandbox segun la postura (../../../shared/lab-conventions.md)
+# 2. Resolver el namespace sandbox segun la postura (../lab-conventions.md)
 # ---------------------------------------------------------------------------
 case "$POSTURE" in
   bare)     SANDBOX_NS="openclaw-bare" ;;

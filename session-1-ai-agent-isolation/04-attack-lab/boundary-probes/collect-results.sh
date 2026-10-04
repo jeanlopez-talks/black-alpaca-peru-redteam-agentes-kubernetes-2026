@@ -41,7 +41,7 @@ done
 
 mkdir -p "$RESULTS_DIR"
 
-# Namespace sandbox por postura (../../../shared/lab-conventions.md).
+# Namespace sandbox por postura (../lab-conventions.md).
 sandbox_ns() {
   case "$1" in
     bare)    echo "openclaw-bare" ;;

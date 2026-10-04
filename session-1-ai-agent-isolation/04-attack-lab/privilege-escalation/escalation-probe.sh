@@ -3,7 +3,7 @@
 # escalation-probe.sh
 # -------------------
 # Se ejecuta DENTRO del pod sandbox (uid 1000, capabilities dropped) e intenta
-# los 8 vectores de escalada de privilegios de ../../../shared/lab-conventions.md, en orden.
+# los 8 vectores de escalada de privilegios de ../lab-conventions.md, en orden.
 #
 # Para cada vector captura el resultado REAL (comando + exit code + stderr) y
 # reporta:
