@@ -42,7 +42,8 @@ session-1-ai-agent-isolation/      PROPUESTA 1 — agente como víctima (aislami
 session-2-ai-red-vs-blue-devsecops/           PROPUESTA 2 — duelo rojo vs azul en pipeline DevSecOps
   01-proposal/            sessionize-proposal.md, concept.md (diseño en 4 actos)
   02-slides/              index.html
-  03-gitops/              argocd/, devsecops-pipeline/ (base, tekton, sample-app, fixtures), admission-policies/, backstage/
+  03-gitops/              devsecops-pipeline/ (base, agents, tekton, pipeline-runs, sample-app, fixtures),
+                          admission-policies/, backstage/  (sus Applications: en homelab-gitops)
   04-ai-agents/           paquete Python (uv) de los 3 agentes A2A: blue_reviewer, red_attacker,
                           approval_agent (+ duel/, tests/, evidence/, Containerfile)
 shared/                   classifier/ (ambas), lab-conventions.md, gitops-architecture.md,
@@ -57,10 +58,12 @@ shared/                   classifier/ (ambas), lab-conventions.md, gitops-archit
   mover carpetas no rompa referencias. Única excepción: el campo `path:` de las Applications de Argo CD,
   que por diseño es relativo a la raíz del repo.
 - Algo nuevo va en la carpeta de su sesión; a `shared/` solo si lo usan las dos.
-- El material de las charlas **no se despliega en el clúster por ahora**: se versiona en Git solamente.
-  La plataforma (registry, Backstage, Tekton, Kyverno) vive en el repo del homelab (ver `shared/gitops-architecture.md`).
-- Secretos: nunca en Git. La clave cosign del duelo se genera fuera (`cosign generate-key-pair k8s://...`);
-  copias locales van en archivos `*-secret.local.yaml` (ignorados).
+- La demo de la sesión 2 la despliega el Argo CD del homelab: el AppProject y las Applications viven en
+  `homelab-gitops` (`bootstrap/applications/talks/black-alpaca-2026/`), no aquí, para que este repo no pueda
+  ampliar sus propios permisos. La sesión 1 (OpenShift) sigue solo en Git. La plataforma (registry, Backstage,
+  Tekton, Kyverno, namespaces) vive en el repo del homelab (ver `shared/gitops-architecture.md`).
+- Secretos: nunca en Git. Viven en OpenBao (la clave cosign del duelo se genera fuera y se siembra allí) y
+  llegan por `ExternalSecret`; copias locales van en archivos `*-secret.local.yaml` (ignorados).
 
 ## Reglas de contenido (no negociables para este repo)
 

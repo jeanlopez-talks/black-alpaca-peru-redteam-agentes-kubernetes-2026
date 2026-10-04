@@ -13,8 +13,10 @@ Infra base compartida, gestionada por el app-of-apps `homelab-root`:
 Lo propio de las dos propuestas de Black Alpaca, cada una con su Argo CD:
 - `../session-1-ai-agent-isolation/03-gitops/` → PROPUESTA 1 (OpenShift): AppProject `ai-agent-isolation`
   + ApplicationSet (4 posturas) + operator Kata.
-- `../session-2-ai-red-vs-blue-devsecops/03-gitops/`      → PROPUESTA 2 (k3s): AppProject `ai-red-vs-blue-devsecops`
-  + pipeline DevSecOps + supply chain + Kyverno.
+- `../session-2-ai-red-vs-blue-devsecops/03-gitops/`      → PROPUESTA 2 (k3s): pipeline DevSecOps + supply chain
+  + Kyverno + agentes. Su AppProject `ai-red-vs-blue-devsecops` y sus Applications NO están aquí: los registra
+  el homelab (`homelab-gitops/bootstrap/applications/talks/black-alpaca-2026/`), porque quien controla el
+  AppProject controla los permisos, y eso es de la plataforma.
   - La **config particular de Backstage para la charla** (catálogo del duelo, componente
     `duel-devsecops`, el agente interactivo) vive AQUÍ, NO en el homelab. La PLATAFORMA
     Backstage está en el homelab; aquí solo su configuración específica de la demo.

@@ -73,8 +73,9 @@ imperativo: en la sesión 1 los ataques que se lanzan contra ese despliegue, en 
 | 4 posturas (manifiestos + Argo CD) | 1 | ✅ validados (kustomize + dry-run) · ⏳ falta desplegar y correr la matriz |
 | Documento técnico + one-pager | 1 | ✅ escritos · ⏳ falta exportar one-pager a PDF |
 
-> El material de las charlas **no está desplegado en el clúster** por ahora: vive solo en Git. Las
-> Applications de `03-gitops/argocd/` están listas para cuando se decida desplegarlo.
+> La demo de la sesión 2 la despliega el **Argo CD del homelab**: su AppProject y sus Applications
+> viven en `homelab-gitops` (`bootstrap/applications/talks/black-alpaca-2026/`), para que este repo
+> no pueda ampliar sus propios permisos. La sesión 1 (OpenShift) sigue solo en Git.
 
 ## Cómo reproducir
 
@@ -86,10 +87,9 @@ pip install -r requirements.txt && python run_classifier.py
 # Duelo rojo vs azul (laptop, modo rules) — sesión 2
 cd session-2-ai-red-vs-blue-devsecops/04-ai-agents && uv run run-duel   # los 4 actos por A2A
 
-# Duelo en k3s (Tekton) — sesión 2. Requiere Tekton, Zot y Kyverno (plataforma del homelab).
-kubectl create namespace devsecops-duel
-cosign generate-key-pair k8s://devsecops-duel/duel-cosign-keys   # la clave nunca va a Git
-kubectl apply -k session-2-ai-red-vs-blue-devsecops/03-gitops/devsecops-pipeline/
+# Duelo en k3s (Tekton + Argo CD del homelab) — sesión 2: un PipelineRun por acto, sync manual.
+argocd app sync ai-red-vs-blue-devsecops-pipeline-runs \
+  --resource tekton.dev:PipelineRun:duel-act3-poisoned-pr
 
 # Las 4 posturas con Argo CD — sesión 1
 kubectl apply -f session-1-ai-agent-isolation/03-gitops/argocd/
