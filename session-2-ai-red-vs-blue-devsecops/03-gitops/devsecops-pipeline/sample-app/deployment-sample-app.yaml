@@ -18,6 +18,8 @@ metadata:
   namespace: devsecops-duel
   labels:
     app: sample-app
+  annotations:
+    duel.redteam/human-approved: "true"
 spec:
   replicas: 1
   selector:
