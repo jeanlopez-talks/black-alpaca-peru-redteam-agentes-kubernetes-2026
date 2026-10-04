@@ -52,9 +52,20 @@ def _custom_objects_api() -> Any | None:
         return None
 
 
+_STATUS_BY_CONDITION = {"True": "Succeeded", "False": "Failed"}
+
+
 def _condition(obj: dict[str, Any]) -> tuple[str, str]:
-    conditions = obj.get("status", {}).get("conditions") or [{}]
-    return conditions[0].get("reason", "Unknown"), conditions[0].get("message", "")
+    """Estado normalizado (Succeeded | Failed | Running) y detalle.
+
+    Se usa `status` y no `reason`: el motivo varía según el caso y la versión de Tekton
+    (un paso que falla deja `StepFailed`, no `Failed`), y compararlo con un texto fijo
+    hacía pasar un deploy rechazado por algo que no había fallado.
+    """
+    condition = (obj.get("status", {}).get("conditions") or [{}])[0]
+    status = _STATUS_BY_CONDITION.get(condition.get("status", ""), "Running")
+    detail = ": ".join(p for p in (condition.get("reason", ""), condition.get("message", "")) if p)
+    return status, detail
 
 
 def read_pipelineruns() -> list[PipelineRunSummary]:
