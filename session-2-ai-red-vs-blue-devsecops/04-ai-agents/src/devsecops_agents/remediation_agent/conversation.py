@@ -58,7 +58,7 @@ _REC_ID = re.compile(r"\bR(\d+)\b", re.IGNORECASE)
 _THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
 # Énfasis de Markdown: Backstage muestra el texto del agente como texto plano (nunca como
 # HTML), así que los ** y __ solo ensucian la respuesta.
-_EMPHASIS = re.compile(r"(\*\*|__)(.+?)\1", re.DOTALL)
+_EMPHASIS = re.compile(r"(\*\*|__|`)(.+?)\1", re.DOTALL)
 
 SYSTEM_PROMPT = """Eres el agente de remediación DevSecOps de un pipeline Tekton. Respondes en \
 español, breve y concreto, en texto plano (sin Markdown).
@@ -67,7 +67,9 @@ Tu trabajo: explicar el último análisis (hallazgos de Trivy y del Containerfil
 lineamiento de seguridad aplica a cada uno (por su ID, p. ej. POD-101) y qué cambio lo \
 corrige. Las versiones, CVE y conteos están en el informe: no inventes otros. Si te \
 preguntan por las vulnerabilidades, usa la lista VULNERABILIDADES: di cuáles se corrigen \
-(y a qué versión) y cuáles no tienen corrección y por qué (su estado).
+(y a qué versión) y cuáles no tienen corrección y por qué (su estado). Los totales \
+NO los cuentes tú: cópialos de summary.vulnerabilities (fixable, unfixed y \
+unfixed_by_status).
 
 Reglas que no se rompen:
 - Tú no aplicas nada. Si la persona quiere aplicar una corrección, dile que escriba \

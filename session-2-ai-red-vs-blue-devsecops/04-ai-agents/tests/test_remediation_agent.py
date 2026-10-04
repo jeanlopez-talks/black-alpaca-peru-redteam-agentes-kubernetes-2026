@@ -116,7 +116,14 @@ def test_add_nonroot_user_goes_before_cmd():
 def test_analysis_counts_come_from_trivy_and_dedupe():
     result = analyze([TRIVY_FS, TRIVY_IMAGE], CONTAINERFILE, containerfile_path=PATH)
     v = result.summary["vulnerabilities"]
-    assert v == {"total": 2, "critical": 1, "high": 1, "fixable": 1, "unfixed": 1}
+    assert v == {
+        "total": 2,
+        "critical": 1,
+        "high": 1,
+        "fixable": 1,
+        "unfixed": 1,
+        "unfixed_by_status": {"affected": 1},
+    }
     assert result.summary["misconfigurations"] == 1
 
 

@@ -164,6 +164,14 @@ def _target(
     }
 
 
+def _count_by_status(vulns: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for v in vulns:
+        status = (v.get("Status") or "unknown").lower()
+        counts[status] = counts.get(status, 0) + 1
+    return dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+
+
 def _misconfigurations(trivy: list[dict[str, Any]]) -> list[dict[str, Any]]:
     found = []
     for report in trivy:
@@ -344,6 +352,8 @@ def analyze(
             "high": sev_count["HIGH"],
             "fixable": len(fixable),
             "unfixed": len(unfixed),
+            # Sin corrección, por estado del proveedor: contado aquí, no por el modelo.
+            "unfixed_by_status": _count_by_status(unfixed),
         },
         "misconfigurations": len(_misconfigurations(trivy)),
     }
