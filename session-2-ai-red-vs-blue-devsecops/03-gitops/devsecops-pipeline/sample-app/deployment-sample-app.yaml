@@ -1,5 +1,6 @@
-# Deployment de la APP DE EJEMPLO: "la carga util" que Argo CD despliega cuando el
-# gate del agente azul aprueba el PR (Acto 3).
+# Deployment de la APP DE EJEMPLO: "la carga util" del atacante. Lo despliega SOLO
+# Argo CD (Application ai-red-vs-blue-devsecops-sample-app); el agente lo intenta con
+# su credencial en la etapa deploy-gitops (Acto 3) y la admision lo rechaza.
 #
 # Imagen: la que el pipeline CONSTRUYE, EMPUJA a Zot y FIRMA con cosign. Asi la
 # policy verifyImages de Kyverno la verifica en admision (y la resuelve a digest).
@@ -9,8 +10,9 @@
 # ADMISSION CONTROL (defensa en capas): este Deployment NO lleva la anotacion
 # 'duel.redteam/human-approved: "true"' a PROPOSITO. La policy
 # 'duel-require-human-approval' (../../admission-policies/) lo RECHAZA: aunque el
-# azul apruebe y la firma verifique (el ataque solo toca CONFIG, no la imagen), el
-# agente no puede poner esa anotacion; solo un humano tras revisar de verdad.
+# azul apruebe y la firma verifique (el ataque solo toca CONFIG, no la imagen). Si el
+# agente se pone la anotacion, tambien: solo admite lo que aplica Argo CD. La aprueba
+# un humano, en un commit, tras revisar el cambio de verdad.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
