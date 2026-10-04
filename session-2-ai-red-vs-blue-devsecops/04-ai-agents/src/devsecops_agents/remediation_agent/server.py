@@ -27,6 +27,7 @@ from devsecops_agents.common.a2a_server import build_agent_card, text_reply
 from devsecops_agents.remediation_agent import conversation
 from devsecops_agents.remediation_agent.analysis import analyze, rules_explanation
 from devsecops_agents.remediation_agent.guidelines import GuidelineClient
+from devsecops_agents.remediation_agent.policies import MISMATCH, PolicyReader, verify
 
 log = logging.getLogger(__name__)
 
@@ -68,9 +69,12 @@ def advise_card(public_url: str) -> AgentCard:
 class RemediationAgent:
     """Lógica compartida por las dos puertas (un solo estado en memoria)."""
 
-    def __init__(self, guidelines: GuidelineClient | None = None) -> None:
+    def __init__(
+        self, guidelines: GuidelineClient | None = None, policies: PolicyReader | None = None
+    ) -> None:
         self.state = conversation.State()
         self.guidelines = guidelines or GuidelineClient()
+        self.policies = policies or PolicyReader()
         self.repo = os.getenv("REMEDIATION_REPO", "")
 
     def advise(self, req: dict[str, Any]) -> dict[str, Any]:
@@ -81,13 +85,23 @@ class RemediationAgent:
             image=str(req.get("image", "")),
             containerfile_path=str(req.get("containerfile_path", "Containerfile")),
         )
-        missing = []
+        missing, poisoned = [], []
         for rec in result.recommendations:
             if rec.guideline_entity:
-                rec.guideline = self.guidelines.get(rec.guideline_entity)
-                if rec.guideline is None:
+                catalog = self.guidelines.get(rec.guideline_entity)
+                if catalog is None:
                     missing.append(rec.guideline_entity)
+                # El catálogo se contrasta con la política que Kyverno aplica (Acto 5).
+                rec.guideline = verify(rec.guideline_entity, catalog, self.policies)
+                if rec.guideline and rec.guideline.get("integrity") == MISMATCH:
+                    poisoned.append(rec.guideline["id"])
+                    rec.detail = f"{rec.guideline['warning']} {rec.detail}"
         explanation = rules_explanation(result)
+        if poisoned:
+            explanation = (
+                f"⚠ Posible envenenamiento de lineamientos: {', '.join(sorted(set(poisoned)))} "
+                "no coincide con la política vigente; uso la política. " + explanation
+            )
         if missing:
             explanation += f" (No pude leer del catálogo: {', '.join(sorted(set(missing)))}.)"
         report = {
@@ -107,10 +121,11 @@ class RemediationAgent:
         )
         self.state.actions.clear()
         log.info(
-            "informe %s: %d recomendaciones, lineamientos sin leer: %s",
+            "informe %s: %d recomendaciones, sin leer: %s, envenenados: %s",
             report["pipeline_run"],
             len(report["recommendations"]),
             missing or "ninguno",
+            poisoned or "ninguno",
         )
         return report
 

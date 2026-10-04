@@ -5,7 +5,7 @@
 #   :8081  pipeline: solo `advise` (la etapa remediation, que corre código no confiable)
 #
 # Lee lineamientos por MCP (agentgateway, con su cliente de Keycloak y la relación de
-# OpenFGA), conversa con el LLM local (vLLM) y, solo cuando la persona confirma, sube una
+# OpenFGA) y los contrasta con la política que Kyverno aplica (Acto 5), conversa con el LLM local (vLLM) y, solo cuando la persona confirma, sube una
 # rama remediation/* al repo de la charla con su deploy key. No toca main ni el clúster.
 apiVersion: apps/v1
 kind: Deployment
@@ -27,7 +27,8 @@ spec:
         backstage.io/kubernetes-id: devsecops-remediation-agent
     spec:
       serviceAccountName: devsecops-remediation-agent
-      automountServiceAccountToken: false
+      # Token montado: lo usa para leer las políticas de Kyverno (solo get, por nombre).
+      automountServiceAccountToken: true
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001
@@ -38,7 +39,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: agent
-          image: ghcr.io/labjp-homelab/devsecops-agents:0.2.2
+          image: ghcr.io/labjp-homelab/devsecops-agents:0.2.3
           command: ["remediation-agent"]
           ports:
             - name: http

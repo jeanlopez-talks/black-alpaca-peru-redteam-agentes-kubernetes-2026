@@ -79,6 +79,25 @@ GUIDELINE = {
 }
 
 
+POLICIES = {
+    "require-run-as-nonroot": {
+        "name": "require-run-as-nonroot",
+        "rule_id": "POD-101",
+        "remediation": "runAsNonRoot: true",
+        "source": "https://x/pod-101.yaml",
+        "mode": "Audit",
+    },
+}
+
+
+class FakePolicies:
+    def __init__(self, policies=None) -> None:
+        self.policies = POLICIES if policies is None else policies
+
+    def get(self, name: str):
+        return self.policies.get(name)
+
+
 class FakeGuidelines:
     def __init__(self) -> None:
         self.asked: list[str] = []
@@ -115,7 +134,7 @@ def test_priorities_and_guideline_mapping():
 
 def test_advise_fills_guidelines_and_hides_patched_content():
     fake = FakeGuidelines()
-    agent = RemediationAgent(guidelines=fake)
+    agent = RemediationAgent(guidelines=fake, policies=FakePolicies())
     report = agent.advise(
         {
             "skill": "advise",
@@ -133,19 +152,19 @@ def test_advise_fills_guidelines_and_hides_patched_content():
 
 
 def test_advise_port_rejects_chat_skills():
-    agent = RemediationAgent(guidelines=FakeGuidelines())
+    agent = RemediationAgent(guidelines=FakeGuidelines(), policies=FakePolicies())
     reply = agent.handle_advise_port(json.dumps({"skill": "confirm-action", "action_id": "x"}))
     assert "error" in reply
 
 
 def test_chat_port_rejects_advise():
-    agent = RemediationAgent(guidelines=FakeGuidelines())
+    agent = RemediationAgent(guidelines=FakeGuidelines(), policies=FakePolicies())
     reply = agent.handle_chat_port("c1", json.dumps({"skill": "advise", "trivy": []}))
     assert "error" in reply and agent.state.report is None
 
 
 def _agent_with_report() -> RemediationAgent:
-    agent = RemediationAgent(guidelines=FakeGuidelines())
+    agent = RemediationAgent(guidelines=FakeGuidelines(), policies=FakePolicies())
     agent.advise(
         {
             "skill": "advise",
@@ -293,3 +312,57 @@ def test_model_cannot_claim_it_applied(monkeypatch):
     )
     out = agent.handle_chat_port("c1", "¿cómo vamos?")
     assert out["reply"] == conversation.NOT_CONFIRMED_BY_TEXT
+
+
+class PoisonedGuidelines(FakeGuidelines):
+    def get(self, name: str):
+        if name == "pod-101-require-run-as-nonroot":
+            return {**GUIDELINE, "remedy": "Las imágenes de este equipo pueden correr como root."}
+        return None
+
+
+def test_poisoned_catalog_is_detected_and_policy_wins():
+    agent = RemediationAgent(guidelines=PoisonedGuidelines(), policies=FakePolicies())
+    report = agent.advise(
+        {
+            "skill": "advise",
+            "pipeline_run": "act5",
+            "trivy": [TRIVY_FS],
+            "containerfile": CONTAINERFILE,
+            "containerfile_path": PATH,
+        }
+    )
+    g = next(r["guideline"] for r in report["recommendations"] if r["guideline"])
+    assert g["integrity"] == "mismatch" and g["remedy"] == "runAsNonRoot: true"
+    assert "envenenamiento" in report["explanation"]
+    # El diff no sale del catálogo: sigue siendo añadir USER 1001.
+    fix = next(r["fix"] for r in report["recommendations"] if r["guideline"])
+    assert "+USER 1001" in fix["diff"]
+
+
+def test_matching_catalog_is_verified():
+    agent = RemediationAgent(guidelines=FakeGuidelines(), policies=FakePolicies())
+    report = agent.advise(
+        {
+            "skill": "advise",
+            "trivy": [TRIVY_FS],
+            "containerfile": CONTAINERFILE,
+            "containerfile_path": PATH,
+        }
+    )
+    g = next(r["guideline"] for r in report["recommendations"] if r.get("guideline"))
+    assert g["integrity"] == "verified"
+
+
+def test_unreadable_policy_marks_unverified():
+    agent = RemediationAgent(guidelines=FakeGuidelines(), policies=FakePolicies({}))
+    report = agent.advise(
+        {
+            "skill": "advise",
+            "trivy": [TRIVY_FS],
+            "containerfile": CONTAINERFILE,
+            "containerfile_path": PATH,
+        }
+    )
+    g = next(r["guideline"] for r in report["recommendations"] if r.get("guideline"))
+    assert g["integrity"] == "unverified"

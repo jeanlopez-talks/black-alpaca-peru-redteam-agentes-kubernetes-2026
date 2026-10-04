@@ -18,7 +18,7 @@ Cuatro agentes de IA que se comunican por **A2A** (protocolo Agent2Agent, `a2a-s
 │   ├── blue_reviewer/          review.py (reglas + LLM), server.py (AgentCard + executor)
 │   ├── red_attacker/           payloads.py (PRs), attacker.py (cliente A2A), CLI
 │   ├── approval_agent/         cluster.py (lectura), actions.py (puerta humana), narrative.py, server.py
-│   ├── remediation_agent/      analysis.py (Trivy → recomendaciones), guidelines.py (MCP),
+│   ├── remediation_agent/      analysis.py (Trivy → recomendaciones), guidelines.py (MCP), policies.py (Acto 5),
 │   │                           conversation.py (chat + confirmación), apply.py (rama), request.py (CLI del pipeline)
 │   └── duel/                   orquestador de los Actos 1-4, siempre por A2A
 ├── tests/                      reglas, puerta humana y A2A real (servidores locales)
@@ -30,7 +30,7 @@ Cuatro agentes de IA que se comunican por **A2A** (protocolo Agent2Agent, `a2a-s
 
 ```bash
 uv sync                          # entorno con las versiones exactas del lock
-uv run pytest                    # 36 tests, incluido el ida y vuelta A2A
+uv run pytest                    # 39 tests, incluido el ida y vuelta A2A
 uv run ruff check src tests      # lint (incluye reglas de seguridad de Bandit)
 uv run run-duel                  # los 4 actos por A2A -> results/duel-results.json
 uv run run-duel --llm            # azul con LLM (vLLM local); sin LLM cae a reglas
@@ -68,6 +68,10 @@ Tekton Chains. No escribe en este repo: no tiene ninguna credencial para hacerlo
   - Cada hallazgo de configuración se ata a su regla por ID (`AVD-DS-0002` → `POD-101`) y el
     agente la lee del catálogo con `backstage_catalog.get-catalog-entity`, vía agentgateway
     con su propio cliente de Keycloak y la relación `can_call` de OpenFGA.
+  - Defensa del Acto 5: cada lineamiento leído del catálogo se contrasta con la
+    ValidatingPolicy que Kyverno aplica (leída del clúster; qué política corresponde lo fija
+    el código, no el catálogo). Si no coinciden, el informe avisa de posible envenenamiento
+    y manda la política. El diff nunca sale del texto del catálogo.
   - El modelo solo conversa. Pedir "aplica R1" prepara una acción pendiente con el diff
     exacto; solo `confirm-action` (el botón de Backstage), en la misma conversación y antes
     de 15 minutos, la ejecuta. Nada del chat, del Containerfile ni de Trivy puede confirmarla.
