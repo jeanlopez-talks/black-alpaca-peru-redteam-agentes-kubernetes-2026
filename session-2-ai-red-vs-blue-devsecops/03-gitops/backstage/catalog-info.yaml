@@ -94,6 +94,56 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
+  name: devsecops-remediation-agent
+  title: Agente de remediación (human-in-the-loop)
+  description: >-
+    Convierte los hallazgos de Trivy en recomendaciones con su lineamiento (leído por MCP
+    y contrastado con la política que Kyverno aplica), conversa en Backstage y solo sube
+    una corrección a una rama remediation/* cuando la persona la confirma.
+  annotations:
+    backstage.io/kubernetes-id: devsecops-remediation-agent
+    backstage.io/kubernetes-namespace: devsecops-agent
+  tags: [agent, human-in-the-loop, mcp, a2a]
+spec:
+  type: service
+  lifecycle: experimental
+  owner: labjp-homelab
+  system: duel-devsecops
+  providesApis: [devsecops-remediation-agent-api]
+  consumesApis: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: devsecops-remediation-agent-api
+  title: DevSecOps Remediation Agent (A2A)
+  description: >-
+    Dos puertas separadas por NetworkPolicy: advise (:8081, solo la etapa remediation
+    del pipeline) y chat/latest-report/confirm-action/cancel-action (:80, solo Backstage).
+    confirm-action es la única forma de aplicar un cambio (botón de la persona).
+  links:
+    - url: http://devsecops-remediation-agent.devsecops-agent.svc.cluster.local/.well-known/agent-card.json
+      title: AgentCard (puerta de Backstage)
+spec:
+  type: a2a
+  lifecycle: experimental
+  owner: labjp-homelab
+  system: duel-devsecops
+  definition: |
+    protocol: A2A (JSON-RPC 2.0)
+    agentCard: /.well-known/agent-card.json
+    puertas:
+      pipeline (:8081):
+        advise: '{"skill": "advise", "pipeline_run": "...", "trivy": [...], "containerfile": "...", "containerfile_path": "..."}'
+      backstage (:80):
+        latest-report: '{"skill": "latest-report"}'
+        chat: '{"skill": "chat", "message": "aplica R1"}  # prepara una acción pendiente; no aplica'
+        confirm-action: '{"skill": "confirm-action", "action_id": "<id>"}  # botón Confirmar; misma conversación, 15 min'
+        cancel-action: '{"skill": "cancel-action", "action_id": "<id>"}'
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
   name: blue-reviewer
   title: Agente azul (revisor de PRs)
   description: Servidor A2A (skill review-pr) en sandbox; versión vulnerable y endurecida.
