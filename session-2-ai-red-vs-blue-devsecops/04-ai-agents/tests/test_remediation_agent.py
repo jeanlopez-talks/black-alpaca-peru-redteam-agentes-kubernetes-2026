@@ -382,3 +382,74 @@ def test_model_markdown_emphasis_is_stripped(monkeypatch):
     monkeypatch.setattr(conversation.llm, "build_chat_model", lambda **kw: FakeModel())
     out = agent.handle_chat_port("c1", "¿qué es lo más urgente?")
     assert out["reply"] == "Lo más urgente es R1 (POD-101)." and out["engine"] == "llm"
+
+
+def test_every_vulnerability_is_listed_with_what_to_do():
+    image = {
+        **TRIVY_IMAGE,
+        "Metadata": {
+            "OS": {"Family": "redhat", "Name": "9.8"},
+            "RepoDigests": ["zot/sample-app@sha256:abc"],
+        },
+    }
+    result = analyze(
+        [TRIVY_FS, image], CONTAINERFILE, image="zot/sample-app:1", containerfile_path=PATH
+    )
+    vulns = result.vulnerabilities
+    assert [(v.id, v.fixable) for v in vulns] == [("CVE-2", True), ("CVE-1", False)]
+    assert "3.0.2" in vulns[0].action
+    assert "sin parche" in vulns[1].action and vulns[1].status == "affected"
+    t = result.target
+    assert t["image"] == "zot/sample-app:1" and t["digest"] == "sha256:abc"
+    assert t["os"] == "redhat 9.8"
+    assert t["base_images"] == ["registry.access.redhat.com/ubi9/nginx-120:9.8"]
+
+
+def test_will_not_fix_is_explained():
+    trivy = {
+        "Results": [
+            {
+                "Target": "img",
+                "Vulnerabilities": [
+                    {
+                        "VulnerabilityID": "CVE-9",
+                        "PkgName": "p",
+                        "Severity": "HIGH",
+                        "Status": "will_not_fix",
+                    }
+                ],
+            }
+        ]
+    }
+    (v,) = analyze([trivy], CONTAINERFILE).vulnerabilities
+    assert not v.fixable and "No se va a corregir" in v.action
+
+
+def test_report_lists_all_vulnerabilities_for_card_and_model():
+    agent = RemediationAgent(guidelines=FakeGuidelines(), policies=FakePolicies())
+    report = agent.advise(
+        {
+            "trivy": [TRIVY_FS, TRIVY_IMAGE],
+            "containerfile": CONTAINERFILE,
+            "containerfile_path": PATH,
+            "image": "zot/sample-app:1",
+            "severity_filter": "HIGH,CRITICAL",
+        }
+    )
+    assert len(report["vulnerabilities"]) == report["summary"]["vulnerabilities"]["total"]
+    assert report["target"]["severity_filter"] == "HIGH,CRITICAL"
+    assert "zot/sample-app:1" in report["explanation"]
+    text = conversation.report_for_model(report)
+    assert "CVE-1 | HIGH | emacs-filesystem" in text and "sin corrección (affected)" in text
+    assert "+USER 1001" not in text  # los diffs no van al modelo
+
+
+def test_slim_keeps_os_and_digest():
+    out = slim(
+        {
+            "ArtifactName": "img",
+            "Metadata": {"OS": {"Family": "redhat"}, "RepoDigests": ["r@sha256:1"], "Size": 9},
+            "Results": [],
+        }
+    )
+    assert out["Metadata"] == {"OS": {"Family": "redhat"}, "RepoDigests": ["r@sha256:1"]}

@@ -25,6 +25,7 @@ _VULN_FIELDS = (
     "Status",
     "Severity",
     "Title",
+    "PrimaryURL",
 )
 _MISCONF_FIELDS = ("ID", "AVDID", "Title", "Description", "Message", "Resolution", "Severity")
 
@@ -44,12 +45,21 @@ def slim(report: dict[str, Any]) -> dict[str, Any]:
                 ],
             }
         )
-    return {"ArtifactName": report.get("ArtifactName", ""), "Results": results}
+    meta = report.get("Metadata") or {}
+    return {
+        "ArtifactName": report.get("ArtifactName", ""),
+        # Sistema operativo y digest de la imagen escaneada (para decir QUÉ se analizó).
+        "Metadata": {"OS": meta.get("OS") or {}, "RepoDigests": meta.get("RepoDigests") or []},
+        "Results": results,
+    }
 
 
 def _print_report(report: dict[str, Any]) -> None:
     v = report["summary"]["vulnerabilities"]
     print(f"[remediation] {report['explanation']}")
+    for v in report.get("vulnerabilities", []):
+        fix = f"→ {v['fixed']}" if v["fixable"] else f"sin corrección ({v['status']})"
+        print(f"[remediation]    {v['id']} [{v['severity']}] {v['package']} {v['installed']} {fix}")
     print(
         f"[remediation] vulnerabilidades: {v['total']} (críticas {v['critical']}, "
         f"altas {v['high']}, con corrección {v['fixable']}, sin ella {v['unfixed']})"
@@ -89,6 +99,7 @@ def _build_request(args: argparse.Namespace) -> dict[str, Any]:
         "skill": "advise",
         "pipeline_run": args.pipeline_run,
         "image": args.image,
+        "severity_filter": args.severity,
         "containerfile": cf.read_text() if cf.is_file() else "",
         "containerfile_path": args.containerfile_path,
         "trivy": trivy,
@@ -130,6 +141,9 @@ def main() -> None:
     )
     parser.add_argument("--pipeline-run", default="manual")
     parser.add_argument("--image", default="")
+    parser.add_argument(
+        "--severity", default="", help="Severidades que pidió el escaneo (p. ej. HIGH,CRITICAL)"
+    )
     parser.add_argument("--output", default="")
     sys.exit(_run(parser.parse_args()))
 

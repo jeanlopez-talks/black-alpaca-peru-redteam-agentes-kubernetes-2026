@@ -27,6 +27,24 @@ TRIVY_TO_GUIDELINE = {
 # Control propio (Trivy no lo reporta): FROM sin digest.
 UNPINNED_BASE_GUIDELINE = "img-002-require-image-checksum"
 
+# Qué significa cada estado de Trivy para quien tiene que decidir (sin versión que corrija,
+# el estado lo pone el proveedor del paquete, p. ej. Red Hat para UBI).
+STATUS_ACTION = {
+    "will_not_fix": "No se va a corregir: el proveedor decidió no publicar parche. Quitar el "
+    "paquete si la app no lo usa o cambiar de imagen base; si no, aceptar el riesgo con una "
+    "excepción documentada.",
+    "fix_deferred": "Corrección aplazada por el proveedor: aún no hay parche. Vigilar el aviso "
+    "y reducir la imagen base.",
+    "affected": "Afectada y sin parche publicado todavía: vigilar el aviso del proveedor y "
+    "reducir la imagen base mientras tanto.",
+    "under_investigation": "El proveedor aún la investiga: sin parche todavía. Vigilar.",
+    "end_of_life": "El sistema operativo de la imagen ya no recibe parches: cambiar de imagen "
+    "base.",
+}
+DEFAULT_UNFIXED_ACTION = (
+    "Sin versión que la corrija: reducir la imagen base o aceptarla con una excepción."
+)
+
 # Usuario no root de las imágenes s2i de UBI (nginx-120 sirve como uid 1001).
 DEFAULT_NONROOT_USER = "1001"
 
@@ -65,11 +83,27 @@ class Recommendation:
 
 
 @dataclass
+class Vulnerability:
+    id: str
+    package: str
+    installed: str
+    fixed: str
+    severity: str
+    status: str
+    title: str
+    url: str
+    fixable: bool
+    action: str  # qué hacer con ella, en una frase
+
+
+@dataclass
 class Analysis:
     image: str
     containerfile_path: str
     summary: dict[str, Any]
     recommendations: list[Recommendation]
+    target: dict[str, Any] = field(default_factory=dict)
+    vulnerabilities: list[Vulnerability] = field(default_factory=list)
 
 
 def _vulnerabilities(trivy: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -79,6 +113,55 @@ def _vulnerabilities(trivy: list[dict[str, Any]]) -> list[dict[str, Any]]:
             for v in result.get("Vulnerabilities") or []:
                 seen.setdefault((v.get("VulnerabilityID", ""), v.get("PkgName", "")), v)
     return list(seen.values())
+
+
+def _vulnerability(v: dict[str, Any]) -> Vulnerability:
+    fixed = v.get("FixedVersion") or ""
+    status = (v.get("Status") or ("fixed" if fixed else "unknown")).lower()
+    pkg, installed = v.get("PkgName", ""), v.get("InstalledVersion", "")
+    if fixed:
+        action = (
+            f"Se corrige: actualizar {pkg} de {installed} a {fixed} "
+            "(o reconstruir sobre la imagen base actualizada)."
+        )
+    else:
+        action = STATUS_ACTION.get(status, DEFAULT_UNFIXED_ACTION)
+    return Vulnerability(
+        id=v.get("VulnerabilityID", ""),
+        package=pkg,
+        installed=installed,
+        fixed=fixed,
+        severity=_sev(v.get("Severity")),
+        status=status,
+        title=v.get("Title") or "",
+        url=v.get("PrimaryURL") or "",
+        fixable=bool(fixed),
+        action=action,
+    )
+
+
+def _target(
+    trivy: list[dict[str, Any]], containerfile: str, image: str, containerfile_path: str
+) -> dict[str, Any]:
+    """Qué se analizó: imagen, digest, sistema operativo, imagen base y origen de cada escaneo."""
+    os_name, digest, scans = "", "", []
+    for report in trivy:
+        meta = report.get("Metadata") or {}
+        osinfo = meta.get("OS") or {}
+        if osinfo and not os_name:
+            os_name = " ".join(x for x in (osinfo.get("Family"), osinfo.get("Name")) if x)
+        if meta.get("RepoDigests") and not digest:
+            digest = str(meta["RepoDigests"][0]).rsplit("@", 1)[-1]
+        for result in report.get("Results") or []:
+            scans.append({"target": result.get("Target", ""), "class": result.get("Class", "")})
+    return {
+        "image": image,
+        "digest": digest,
+        "os": os_name,
+        "base_images": _FROM_RE.findall(containerfile),
+        "containerfile_path": containerfile_path,
+        "scans": scans,
+    }
 
 
 def _misconfigurations(trivy: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -209,8 +292,7 @@ def analyze(
                 detail="Hay versiones que las corrigen: reconstruir sobre la última imagen base "
                 "o actualizar estos paquetes.",
                 evidence=[
-                    f"{pkg} {d['installed']} → {d['fixed']} ({', '.join(sorted(d['cves'])[:3])}"
-                    f"{'…' if len(d['cves']) > 3 else ''})"
+                    f"{pkg} {d['installed']} → {d['fixed']} ({', '.join(sorted(d['cves']))})"
                     for pkg, d in sorted(by_pkg.items())
                 ],
                 fix=Fix(
@@ -236,8 +318,7 @@ def analyze(
                 detail="No hay versión que las corrija: vienen de paquetes de la imagen base. "
                 "Se reducen usando una base mínima con solo lo que la app necesita, o se "
                 "aceptan con una excepción documentada.",
-                evidence=[f"{pkg}: {n} CVE" for pkg, n in top[:10]]
-                + ([f"… y {len(top) - 10} paquetes más"] if len(top) > 10 else []),
+                evidence=[f"{pkg}: {n} CVE" for pkg, n in top],
                 fix=Fix(
                     type="base-image",
                     summary="Evaluar una base mínima (p. ej. ubi9-minimal + nginx).",
@@ -266,14 +347,25 @@ def analyze(
         },
         "misconfigurations": len(_misconfigurations(trivy)),
     }
+    # Todas, una por una: primero las que se corrigen, y dentro de cada grupo por severidad.
+    detail = sorted(
+        (_vulnerability(v) for v in vulns),
+        key=lambda x: (not x.fixable, SEVERITY_ORDER[x.severity], x.package, x.id),
+    )
     return Analysis(
-        image=image, containerfile_path=containerfile_path, summary=summary, recommendations=recs
+        image=image,
+        containerfile_path=containerfile_path,
+        summary=summary,
+        recommendations=recs,
+        target=_target(trivy, containerfile, image, containerfile_path),
+        vulnerabilities=detail,
     )
 
 
 def rules_explanation(analysis: Analysis) -> str:
     """Explicación sin modelo: los hechos del informe en una frase."""
     v = analysis.summary["vulnerabilities"]
+    image = analysis.target.get("image") or analysis.image
     parts = [
         f"{v['total']} vulnerabilidades ({v['critical']} críticas, {v['high']} altas; "
         f"{v['fixable']} con corrección, {v['unfixed']} sin ella)",
@@ -286,4 +378,5 @@ def rules_explanation(analysis: Analysis) -> str:
         if patchable
         else ""
     )
-    return "Encontré " + " y ".join(parts) + "." + tail
+    where = f"En la imagen {image} encontré " if image else "Encontré "
+    return where + " y ".join(parts) + "." + tail

@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
@@ -108,6 +109,12 @@ class RemediationAgent:
             "pipeline_run": str(req.get("pipeline_run", "manual")),
             "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "image": result.image,
+            "target": {
+                **result.target,
+                # Lo que el escaneo NO mira: severidades fuera del filtro no aparecen.
+                "severity_filter": str(req.get("severity_filter", "")),
+            },
+            "vulnerabilities": [asdict(v) for v in result.vulnerabilities],
             "summary": result.summary,
             "recommendations": [r.as_dict() for r in result.recommendations],
             "explanation": explanation,
