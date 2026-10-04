@@ -50,8 +50,9 @@ def propose_actions(runs: list[PipelineRunSummary]) -> list[Proposal]:
             Proposal(
                 f"approve:{run.name}",
                 "Aprobar el deploy con revisión humana",
-                "Añadir duel.redteam/human-approved=true, que exige Kyverno, SOLO tras revisar "
-                "el diff real (no este resumen).",
+                "Tras revisar el diff real (no este resumen), añadir en Git "
+                "duel.redteam/human-approved=true al Deployment: Kyverno solo admite lo que "
+                "llega por Argo CD con esa aprobación.",
                 "alta",
             )
         )

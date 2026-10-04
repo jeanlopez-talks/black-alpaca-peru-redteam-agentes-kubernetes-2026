@@ -26,7 +26,8 @@ def template_explanation(runs: list[PipelineRunSummary]) -> str:
         if stage.get("gate-blue") == "Succeeded" and stage.get("deploy-gitops") == "Failed":
             lines.append(
                 "  => El azul aprobó y la firma es válida, pero la admisión (Kyverno) rechazó "
-                "el deploy por falta de aprobación humana."
+                "el deploy del agente: falta la aprobación humana y, aunque la falsifique, "
+                "solo se admite lo que llega por GitOps (un commit revisado)."
             )
     return "\n".join(lines)
 

@@ -121,10 +121,12 @@ def _mock_pipelinerun() -> PipelineRunSummary:
         ),
         Stage("verify", "Succeeded", "firma válida: el ataque solo toca config"),
         Stage(
-            "deploy-gitops", "Failed", "RECHAZADO por Kyverno: falta duel.redteam/human-approved"
+            "deploy-gitops",
+            "Failed",
+            "RECHAZADO por Kyverno: sin aprobación humana y no viene de GitOps",
         ),
     ]
-    return PipelineRunSummary("duel-devsecops-poisoned", "Failed", stages, is_mock=True)
+    return PipelineRunSummary("duel-act3-poisoned-pr", "Failed", stages, is_mock=True)
 
 
 def _mock_argocd_app() -> dict[str, Any]:
