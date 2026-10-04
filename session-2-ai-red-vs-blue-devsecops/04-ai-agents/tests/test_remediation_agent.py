@@ -266,3 +266,13 @@ def test_slim_keeps_only_used_fields():
     }
     out = slim(big)
     assert "References" not in out["Results"][0]["Vulnerabilities"][0]
+
+
+def test_questions_do_not_prepare_actions(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "none")
+    agent = _agent_with_report()
+    for question in ("¿Qué es lo más urgente y qué lineamiento aplica?", "¿cómo se corrige R1?"):
+        out = agent.handle_chat_port("c1", json.dumps({"skill": "chat", "message": question}))
+        assert out["pending_action"] is None
+    assert agent.state.actions == {}
+    assert agent.handle_chat_port("c1", "Por favor, corrige R1")["pending_action"]

@@ -29,9 +29,12 @@ log = logging.getLogger(__name__)
 
 ACTION_TTL_S = 15 * 60
 MAX_HISTORY = 12
+# Pedir un cambio exige una orden explícita al principio del mensaje ("aplica R1",
+# "corrige R1", "propón el cambio"): una pregunta como "¿qué lineamiento aplica?" no
+# prepara nada. Y aun así, prepararlo no lo ejecuta: eso solo lo hace confirm-action.
 _APPLY_INTENT = re.compile(
-    r"\b(aplica|aplicar|aplícal[oa]|corrige|corregir|arregla|arreglar|crea(r)?\s+(la\s+)?rama"
-    r"|abre?\s+(un\s+)?pr|propón\s+el\s+cambio|haz\s+el\s+cambio|fix)\b",
+    r"^\s*(por\s+favor[,\s]+)?(aplica|aplícal[oa]|aplicar|corrige|corregir|arregla|arreglar"
+    r"|crea(r)?\s+(la\s+)?rama|abre\s+(un\s+)?pr|propón\s+el\s+cambio|haz\s+el\s+cambio)\b",
     re.IGNORECASE,
 )
 _REC_ID = re.compile(r"\bR(\d+)\b", re.IGNORECASE)
