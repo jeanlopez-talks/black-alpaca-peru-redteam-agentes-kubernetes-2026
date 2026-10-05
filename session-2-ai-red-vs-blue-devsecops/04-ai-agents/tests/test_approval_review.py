@@ -139,3 +139,14 @@ def test_evidence_can_only_be_a_line_the_pr_adds():
     lines = review.added_lines(ATTACK_PRS["pr-02-poisoned.diff"].diff)
     assert enum["enum"] == [*lines, ""] and lines
     assert all(line in ATTACK_PRS["pr-02-poisoned.diff"].diff for line in lines)
+
+
+def test_summary_sends_when_each_run_started(monkeypatch):
+    from devsecops_agents.approval_agent import cluster, server
+
+    run = _run()
+    run.started = "2026-10-05T04:00:00Z"
+    monkeypatch.setattr(cluster, "read_pipelineruns", lambda: [run])
+    monkeypatch.setattr(cluster, "read_argocd_apps", lambda: [])
+    out = server.handle({"skill": "summarize-pipeline"}, "")
+    assert out["pipelineruns"][0]["started"] == "2026-10-05T04:00:00Z"

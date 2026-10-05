@@ -106,6 +106,7 @@ def handle(request: dict[str, Any], human_token: str) -> dict[str, Any]:
                     "name": r.name,
                     "overall": r.overall,
                     "is_mock": r.is_mock,
+                    "started": r.started,
                     "stages": [vars(s) for s in r.stages],
                 }
                 for r in runs
