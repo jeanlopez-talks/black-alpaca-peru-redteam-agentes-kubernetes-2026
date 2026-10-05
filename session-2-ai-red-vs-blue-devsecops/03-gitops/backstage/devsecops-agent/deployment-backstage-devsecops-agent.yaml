@@ -31,7 +31,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: agent
-          image: ghcr.io/labjp-homelab/devsecops-agents:0.4.0
+          image: ghcr.io/labjp-homelab/devsecops-agents:0.4.1
           command: ["approval-agent"]
           ports:
             - name: http
