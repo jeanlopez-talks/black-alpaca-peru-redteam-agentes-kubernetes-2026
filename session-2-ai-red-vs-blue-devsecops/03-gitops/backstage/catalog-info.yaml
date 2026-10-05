@@ -55,10 +55,11 @@ apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: approval-agent
-  title: Agente de aprobación (resume el pipeline, propone y espera al humano)
+  title: Agente de aprobación (segunda opinión sobre cada PipelineRun)
   description: >-
-    Resume cada etapa del pipeline, explica por qué se aprobó o rechazó y PROPONE
-    acciones que un humano confirma con su token. Propone, pero no actúa solo.
+    No se fía del revisor azul: con los resultados reales de cada etapa y el diff del PR,
+    el modelo revisa cada run (inyección, qué haría el cambio, si al azul lo engañaron),
+    lee los lineamientos del catálogo por MCP y recomienda; un humano decide con su token.
   annotations:
     # Pestaña Documentation: la misma documentación del sistema (mkdocs.yml + docs/).
     backstage.io/techdocs-ref: dir:.
