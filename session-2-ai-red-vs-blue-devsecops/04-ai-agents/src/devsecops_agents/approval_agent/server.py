@@ -29,8 +29,9 @@ from a2a.types import (
 )
 
 from devsecops_agents import __version__
-from devsecops_agents.approval_agent import actions, cluster, narrative
+from devsecops_agents.approval_agent import actions, cluster, narrative, review
 from devsecops_agents.common.a2a_server import build_agent_card, request_header, text_reply
+from devsecops_agents.common.backstage_mcp import GuidelineClient
 
 log = logging.getLogger(__name__)
 
@@ -85,6 +86,16 @@ def _human_token(context: RequestContext) -> str:
     return request_header(context, HUMAN_HEADER).strip()
 
 
+_reviews: review.ReviewCache | None = None
+
+
+def _review_cache() -> review.ReviewCache:
+    global _reviews
+    if _reviews is None:
+        _reviews = review.ReviewCache(GuidelineClient())
+    return _reviews
+
+
 def handle(request: dict[str, Any], human_token: str) -> dict[str, Any]:
     skill = request.get("skill")
     if skill == "summarize-pipeline":
@@ -100,13 +111,32 @@ def handle(request: dict[str, Any], human_token: str) -> dict[str, Any]:
                 for r in runs
             ],
             "argocd_apps": cluster.read_argocd_apps(),
-            "explanation": narrative.explain(runs),
+            "explanation": narrative.template_explanation(runs),
+            # Segunda opinión del modelo (en segundo plano): pending | done | failed.
+            "review": _review_cache().get(runs),
         }
     if skill == "propose-actions":
+        runs = cluster.read_pipelineruns()
+        state = _review_cache().get(runs)
+        if state.get("status") == "done":
+            # Las del modelo, ya verificadas (solo acciones posibles para cada run).
+            proposals = [
+                {
+                    "id": p["id"],
+                    "title": p["action"],
+                    "why": p["why"],
+                    "danger": "alta" if p["action"] == "approve" else "baja",
+                }
+                for r in state["runs"]
+                for p in r["proposals"]
+            ]
+            source = "modelo (verificado)"
+        else:
+            proposals = [p.as_dict() for p in actions.propose_actions(runs)]
+            source = "reglas"
         return {
-            "proposals": [
-                p.as_dict() for p in actions.propose_actions(cluster.read_pipelineruns())
-            ],
+            "proposals": proposals,
+            "source": source,
             "note": "Son propuestas: ninguna se ejecuta sin el token de un humano.",
         }
     if skill == "execute-action":

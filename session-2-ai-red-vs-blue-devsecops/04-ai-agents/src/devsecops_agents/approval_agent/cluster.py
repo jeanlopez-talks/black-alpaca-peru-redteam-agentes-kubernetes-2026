@@ -31,6 +31,8 @@ class Stage:
     name: str
     status: str  # Succeeded | Failed | Running | Skipped | Unknown
     reason: str = ""
+    # Resultados que publica la etapa (p. ej. gate-blue → decision=APPROVE).
+    results: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -39,6 +41,8 @@ class PipelineRunSummary:
     overall: str
     stages: list[Stage] = field(default_factory=list)
     is_mock: bool = False
+    # Parámetros del run: qué PR se revisó (pr-diff) y con qué revisor (blue-reviewer-url).
+    params: dict[str, str] = field(default_factory=dict)
 
 
 def _custom_objects_api() -> Any | None:
@@ -85,11 +89,24 @@ def read_pipelineruns() -> list[PipelineRunSummary]:
         overall, _ = _condition(run)
         stages = []
         for child in run.get("status", {}).get("childReferences", []):
-            status, message = _condition(by_name.get(child.get("name", ""), {}))
-            stages.append(Stage(child.get("pipelineTaskName", "?"), status, message[:200]))
+            taskrun = by_name.get(child.get("name", ""), {})
+            status, message = _condition(taskrun)
+            results = {
+                str(r.get("name", "")): str(r.get("value", ""))[:200]
+                for r in taskrun.get("status", {}).get("results") or []
+                if isinstance(r, dict) and isinstance(r.get("value"), str)
+            }
+            stages.append(Stage(child.get("pipelineTaskName", "?"), status, message[:200], results))
         for skipped in run.get("status", {}).get("skippedTasks", []):
             stages.append(Stage(skipped.get("name", "?"), "Skipped", skipped.get("reason", "")))
-        summaries.append(PipelineRunSummary(run["metadata"]["name"], overall, stages))
+        params = {
+            str(p.get("name", "")): str(p.get("value", ""))[:300]
+            for p in run.get("spec", {}).get("params") or []
+            if isinstance(p, dict) and isinstance(p.get("value"), str)
+        }
+        summaries.append(
+            PipelineRunSummary(run["metadata"]["name"], overall, stages, params=params)
+        )
     return summaries or [_mock_pipelinerun()]
 
 
@@ -122,22 +139,45 @@ def read_argocd_apps() -> list[dict[str, Any]]:
 def _mock_pipelinerun() -> PipelineRunSummary:
     """Escenario del duelo: el azul aprueba, la firma es válida, Kyverno frena el deploy."""
     stages = [
-        Stage("sast", "Succeeded", "semgrep/gitleaks informativo, sin hallazgos bloqueantes"),
+        Stage(
+            "sast",
+            "Succeeded",
+            "semgrep/gitleaks informativo, sin hallazgos bloqueantes",
+            {"status": "OK"},
+        ),
         Stage("build", "Succeeded", "kaniko construyó y empujó la imagen a Zot"),
         Stage("sbom", "Succeeded", "Syft generó CycloneDX + SPDX"),
         Stage("trivy-scan", "Succeeded", "sin HIGH/CRITICAL"),
         Stage("sign", "Succeeded", "cosign firmó la imagen por digest"),
         Stage(
-            "gate-blue", "Succeeded", "el agente azul APROBÓ el PR (engañado por el PR envenenado)"
+            "gate-blue",
+            "Succeeded",
+            "el agente azul APROBÓ el PR (engañado por el PR envenenado)",
+            {"decision": "APPROVE"},
         ),
-        Stage("verify", "Succeeded", "firma válida: el ataque solo toca config"),
+        Stage(
+            "verify",
+            "Succeeded",
+            "firma válida: el ataque solo toca config",
+            {"verify-status": "OK"},
+        ),
         Stage(
             "deploy-gitops",
             "Failed",
             "RECHAZADO por Kyverno: sin aprobación humana y no viene de GitOps",
+            {"admission": "REJECTED"},
         ),
     ]
-    return PipelineRunSummary("act3-prompt-injected-pr", "Failed", stages, is_mock=True)
+    return PipelineRunSummary(
+        "act3-prompt-injected-pr",
+        "Failed",
+        stages,
+        is_mock=True,
+        params={
+            "pr-diff": "pr-02-poisoned.diff",
+            "blue-reviewer-url": "http://blue-reviewer:9999/",
+        },
+    )
 
 
 def _mock_argocd_app() -> dict[str, Any]:
