@@ -245,16 +245,21 @@ def test_rejected_patch_resolves_nothing(monkeypatch):
 def test_schema_only_allows_what_the_facts_allow():
     data = llm_analysis.build_input(_analysis(), _facts(), CONTAINERFILE)
     schema = llm_analysis.build_schema(data, _facts())
-    pk = schema["properties"]["packages"]["properties"]
+    groups = schema["properties"]["groups"]["properties"]
+    # Paquetes en la misma situación forman un grupo: el modelo los valora una vez.
+    assert set(groups) == {"carga-directa", "via-modulo:nginx-mod-http-image-filter", "no-lo-usa"}
+    unused = next(g for g in data["package_groups"] if g["group"] == "no-lo-usa")
+    assert {p["package"] for p in unused["packages"]} == {"vim-minimal", "util-linux"}
     # Sin versión que lo corrija no se puede «actualizar»; lo que nginx carga no se «quita».
-    assert pk["openssl-libs"]["properties"]["action"]["enum"] == [
+    assert groups["carga-directa"]["properties"]["action"]["enum"] == [
         "cambiar-base",
         "aceptar",
         "vigilar",
     ]
-    assert pk["libpng"]["properties"]["action"]["enum"][0] == "actualizar"
-    assert "quitar" in pk["vim-minimal"]["properties"]["action"]["enum"]
-    assert pk["vim-minimal"]["properties"]["risk"]["enum"] == ["medio", "bajo"]
+    libpng = groups["via-modulo:nginx-mod-http-image-filter"]["properties"]["action"]["enum"]
+    assert libpng[0] == "actualizar"
+    assert "quitar" in groups["no-lo-usa"]["properties"]["action"]["enum"]
+    assert groups["no-lo-usa"]["properties"]["risk"]["enum"] == ["medio", "bajo"]
     root = schema["properties"]["findings"]["properties"]["AVD-DS-0002"]
     assert root["properties"]["verdict"]["enum"] == ["falso-positivo", "defensa-en-profundidad"]
     patch = schema["properties"]["patch"]["properties"]
@@ -409,7 +414,7 @@ def test_advise_answers_fast_then_publishes_the_model_analysis(monkeypatch):
     assert "rpm -e --nodeps vim-minimal" in agent.state.analysis.recommendations[0].fix.patched
     assert final["llm"]["input"]["data"]["facts"]["user"] == "1001"  # se ve qué recibió
     so = built[0]["extra_body"]["structured_outputs"]
-    assert so["disable_any_whitespace"] and so["json"]["properties"]["packages"]
+    assert so["disable_any_whitespace"] and so["json"]["properties"]["groups"]
 
 
 def test_a_free_text_title_cannot_promise_removing_what_the_app_loads():
@@ -643,3 +648,32 @@ def test_history_keeps_the_last_runs_only():
     for i in range(12):
         agent.advise({"trivy": [], "containerfile": CONTAINERFILE, "pipeline_run": f"run-{i}"})
     assert list(agent.state.runs) == [f"run-{i}" for i in range(2, 12)]
+
+
+def test_a_group_assessment_applies_to_each_of_its_packages():
+    raw = _raw()
+    raw.pop("packages")
+    raw["groups"] = {
+        "no-lo-usa": {"risk": "bajo", "reason": "nginx no los usa", "action": "quitar"}
+    }
+    v = llm_analysis.verify(raw, _analysis(), _facts(), CONTAINERFILE)
+    pk = {p["package"]: p for p in v["packages"]}
+    assert pk["vim-minimal"]["action"] == pk["util-linux"]["action"] == "quitar"
+    assert pk["vim-minimal"]["source"] == "modelo"
+    assert pk["openssl-libs"]["source"] == "reglas"  # su grupo no vino en la respuesta
+
+
+def test_a_title_cannot_promise_updating_what_has_no_fix():
+    raw = _raw()
+    raw["priorities"] = [
+        {
+            "title": "Actualizar openssl-libs si es necesario",
+            "why": "x",
+            "action": "actualizar",
+            "findings": ["openssl-libs"],
+            "applies_patch": False,
+        }
+    ]
+    v = llm_analysis.verify(raw, _analysis(), _facts(), CONTAINERFILE)
+    assert v["priorities"][0]["title"] == "Decidir sobre openssl-libs: sin parche publicado"
+    assert any("actualizar no lo resuelve" in c for c in v["corrections"])

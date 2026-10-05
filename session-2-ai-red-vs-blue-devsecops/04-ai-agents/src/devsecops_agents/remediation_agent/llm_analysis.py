@@ -100,8 +100,8 @@ solo con el JSON pedido, en español, concreto y sin relleno.
 Razona con los HECHOS, no supongas:
 - facts.user / facts.runs_as_root: con qué usuario corre de verdad (la imagen base puede \
 definir USER aunque el Containerfile no lo repita).
-- vulnerable_packages[].runtime_fact: si el proceso principal lo carga y por qué está en \
-la imagen. fix_available=false significa que NO hay versión que lo corrija.
+- package_groups: los paquetes vulnerables agrupados por cómo los usa el proceso \
+principal (fact). fix_available=false significa que NO hay versión que lo corrija.
 - facts.modules: módulos instalados que el proceso carga al arrancar y qué paquetes \
 vulnerables arrastra cada uno. Si la app no necesita un módulo (p. ej. un nginx que sirve \
 un HTML estático no necesita perl, xslt, image-filter, mail ni stream), quitarlo elimina \
@@ -112,8 +112,8 @@ Qué devolver:
 - findings: veredicto de cada hallazgo de configuración, con el motivo, y guideline: \
 el nombre del lineamiento (de guidelines_read, los que leíste del catálogo) que aplica, \
 o "ninguno".
-- packages: para cada paquete, risk en ESTE contexto (un paquete que la app no carga \
-importa menos que uno que sí), reason concreto (qué hace aquí y por qué importa o no) y \
+- groups: para cada grupo, risk en ESTE contexto (lo que la app no carga importa menos \
+que lo que sí), reason concreto (qué hacen aquí esos paquetes y por qué importan o no) y \
 action.
 - priorities: de 2 a 5 decisiones ordenadas por riesgo real. title en imperativo \
 ("Quitar los paquetes que nginx no usa"), why, action, findings con los IDs o paquetes \
@@ -143,11 +143,17 @@ def digest_packages(analysis: Analysis, facts: dict[str, Any]) -> list[dict[str,
         usage = facts["package_usage"].get(name, {})
         runtime = usage.get("runtime", "sin-datos")
         fixed = sorted({v.fixed for v in vulns if v.fixed})
+        mods = usage.get("via_modules") or []
         rows.append(
             {
+                # Paquetes en la misma situación comparten valoración: el modelo valora el
+                # grupo una vez, en vez de repetir el mismo razonamiento por paquete.
+                "group": f"{runtime}:{'+'.join(mods)}" if runtime == VIA_MODULE else runtime,
                 "package": name,
                 "installed": vulns[0].installed,
-                "cves": [v.id for v in vulns],
+                # Cuántas, no cuáles: el esquema no le deja citar CVE (sí paquetes), y la
+                # lista completa ya está en el informe y en la tabla de Backstage.
+                "cve_count": len(vulns),
                 "max_severity": min((v.severity for v in vulns), key=SEVERITY_ORDER.get),
                 "fix_available": bool(fixed),
                 "fixed_versions": fixed,
@@ -156,12 +162,38 @@ def digest_packages(analysis: Analysis, facts: dict[str, Any]) -> list[dict[str,
                 "runtime_fact": _USE_TEXT.get(runtime, "sin datos de uso").format(
                     main=main,
                     mods=", ".join(usage.get("via_modules") or []),
-                    by=", ".join((usage.get("required_by") or [])[:4]) or "nadie (sobra)",
+                    by=", ".join((usage.get("required_by") or [])[:3]) or "nadie (sobra)",
                 ),
-                "examples": [v.title[:90] for v in vulns[:2] if v.title],
+                "example": next((v.title[:80] for v in vulns if v.title), ""),
             }
         )
     return rows
+
+
+def package_groups(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Los paquetes por grupo de uso, con el hecho del grupo dicho una vez."""
+    groups: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        g = groups.setdefault(
+            r["group"],
+            {
+                "group": r["group"],
+                "runtime": r["runtime"],
+                "fact": r["runtime_fact"]
+                if r["runtime"] != NOT_USED
+                else _USE_TEXT[NOT_USED].split(";")[0],
+                "packages": [],
+            },
+        )
+        g["packages"].append(
+            {k: r[k] for k in ("package", "cve_count", "fix_available", "statuses", "example")}
+            | (
+                {"required_by": r["runtime_fact"].split(": ", 1)[-1]}
+                if r["runtime"] == NOT_USED
+                else {}
+            )
+        )
+    return list(groups.values())
 
 
 def configuration_findings(analysis: Analysis) -> list[dict[str, str]]:
@@ -198,7 +230,7 @@ def build_input(
         },
         "containerfile": containerfile,
         "configuration_findings": configuration_findings(analysis),
-        "vulnerable_packages": digest_packages(analysis, facts),
+        "package_groups": package_groups(digest_packages(analysis, facts)),
         # Lo que el modelo eligió leer del catálogo por MCP (texto del catálogo: no confiable).
         "guidelines_read": [
             {"name": name, **{k: g.get(k, "") for k in ("id", "title", "remedy", "description")}}
@@ -209,20 +241,22 @@ def build_input(
 
 def build_schema(data: dict[str, Any], facts: dict[str, Any]) -> dict[str, Any]:
     """Esquema de la respuesta, generado a partir de los hechos de ESTA imagen."""
-    rows = data["vulnerable_packages"]
+    groups_in = data["package_groups"]
+    rows = [p | {"runtime": g["runtime"]} for g in groups_in for p in g["packages"]]
     finding_ids = [f["id"] for f in data["configuration_findings"]]
-    packages = {}
-    for r in rows:
-        can_remove = r["runtime"] in _REMOVABLE and r["package"] not in NEVER_REMOVE
+    groups = {}
+    for g in groups_in:
+        names = [p["package"] for p in g["packages"]]
+        can_remove = g["runtime"] in _REMOVABLE and not set(names) & NEVER_REMOVE
         actions = list(_ACTIONS_UNUSED if can_remove else _ACTIONS_IN_USE)
-        if r["fix_available"]:
-            actions.insert(0, "actualizar")
-        packages[r["package"]] = {
+        if all(p["fix_available"] for p in g["packages"]):
+            actions.insert(0, "actualizar")  # solo si TODOS tienen versión que corrige
+        groups[g["group"]] = {
             "type": "object",
             "additionalProperties": False,
             "properties": {
-                "risk": {"enum": _RISKS.get(r["runtime"], ["alto", "medio", "bajo"])},
-                "reason": _str(),
+                "risk": {"enum": _RISKS.get(g["runtime"], ["alto", "medio", "bajo"])},
+                "reason": _str(200),
                 "action": {"enum": actions},
             },
             "required": ["risk", "reason", "action"],
@@ -242,7 +276,7 @@ def build_schema(data: dict[str, Any], facts: dict[str, Any]) -> dict[str, Any]:
             "additionalProperties": False,
             "properties": {
                 "verdict": {"enum": options},
-                "reason": _str(),
+                "reason": _str(240),
                 # Solo puede citar un lineamiento que de verdad leyó por MCP.
                 "guideline": {"enum": [*read_names, "ninguno"]},
             },
@@ -253,7 +287,7 @@ def build_schema(data: dict[str, Any], facts: dict[str, Any]) -> dict[str, Any]:
         for r in rows
         if r["runtime"] in _REMOVABLE and r["package"] not in NEVER_REMOVE
     ]
-    refs = finding_ids + [r["package"] for r in rows]
+    refs = finding_ids + list(groups) + [r["package"] for r in rows]
     remove_schema: dict[str, Any] = {"type": "array", "maxItems": 0}
     if removable:
         remove_schema = {"type": "array", "items": {"enum": removable}}
@@ -267,18 +301,18 @@ def build_schema(data: dict[str, Any], facts: dict[str, Any]) -> dict[str, Any]:
         "type": "object",
         "additionalProperties": False,
         "properties": {
-            "overview": _str(700),
+            "overview": _str(450),
             "findings": {
                 "type": "object",
                 "additionalProperties": False,
                 "properties": verdicts,
                 "required": finding_ids,
             },
-            "packages": {
+            "groups": {
                 "type": "object",
                 "additionalProperties": False,
-                "properties": packages,
-                "required": list(packages),
+                "properties": groups,
+                "required": list(groups),
             },
             "priorities": {
                 "type": "array",
@@ -289,8 +323,8 @@ def build_schema(data: dict[str, Any], facts: dict[str, Any]) -> dict[str, Any]:
                     "additionalProperties": False,
                     "properties": {
                         "title": _str(120),
-                        "why": _str(),
-                        "action": _str(),
+                        "why": _str(240),
+                        "action": _str(200),
                         "findings": {"type": "array", "minItems": 1, "items": {"enum": refs}},
                         "applies_patch": {"type": "boolean"},
                     },
@@ -303,12 +337,12 @@ def build_schema(data: dict[str, Any], facts: dict[str, Any]) -> dict[str, Any]:
                 "properties": {
                     "remove_modules": modules_schema,
                     "remove_packages": remove_schema,
-                    "explanation": _str(),
+                    "explanation": _str(240),
                 },
                 "required": ["remove_modules", "remove_packages", "explanation"],
             },
         },
-        "required": ["overview", "findings", "packages", "priorities", "patch"],
+        "required": ["overview", "findings", "groups", "priorities", "patch"],
     }
 
 
@@ -333,6 +367,7 @@ _ALLOWED_ADDED = re.compile(
     r"|USER [A-Za-z0-9._-]+(:[A-Za-z0-9._-]+)?"
     rf"|RUN rpm -e --nodeps {_NAME}( {_NAME})* && rm -rf /var/cache/dnf /var/cache/yum"
 )
+_UPDATE_WORDS = re.compile(r"\b(actualiza\w*|update|upgrade)\b")
 _REMOVE_WORDS = re.compile(r"\b(quitar|elimina\w*|remove|borrar|desinstalar)\b")
 
 
@@ -430,7 +465,7 @@ def verify(
     corrections: list[str] = []
     data = build_input(analysis, facts, containerfile, guidelines_read)
     read_names = {g["name"] for g in data["guidelines_read"]}
-    rows = {r["package"]: r for r in data["vulnerable_packages"]}
+    rows = {r["package"]: r for r in digest_packages(analysis, facts)}
     finding_ids = [f["id"] for f in data["configuration_findings"]]
     cve_ids = {v.id for v in analysis.vulnerabilities}
 
@@ -467,12 +502,17 @@ def verify(
 
     # Paquetes: solo los del escaneo, acciones posibles según hechos; los que falten, reglas.
     given_pkgs = _as_map(raw.get("packages"), "package")
+    given_groups = _as_map(raw.get("groups"), "group")
+    for gid in set(given_groups) - {r["group"] for r in rows.values()}:
+        corrections.append(f"Descarté el grupo «{gid}»: no existe en esta imagen.")
     for name in set(given_pkgs) - set(rows):
         corrections.append(f"Descarté «{name}»: no es un paquete vulnerable del escaneo.")
     assessed = []
     for name, row in rows.items():
         runtime = row["runtime"]
-        p = given_pkgs.get(name)
+        # La valoración del paquete si la hay (proveedor sin salida guiada); si no, la de
+        # su grupo (lo que pide el esquema).
+        p = given_pkgs.get(name) or given_groups.get(row["group"])
         if p is None:
             assessed.append(
                 {
@@ -495,7 +535,7 @@ def verify(
                 f"{name}: el modelo propuso actualizar, pero no hay versión que lo corrija; "
                 f"cambio la acción a «{action}»."
             )
-        if action == "quitar" and runtime not in _REMOVABLE:
+        if action == "quitar" and (runtime not in _REMOVABLE or name in NEVER_REMOVE):
             corrections.append(
                 f"{name}: el modelo propuso quitarlo, pero el proceso principal lo carga; "
                 "lo dejo en «vigilar»."
@@ -610,6 +650,10 @@ def verify(
         refs, unknown = [], []
         for ref in pr.get("findings") or []:
             ref = str(ref).strip()
+            members = [n for n, r in rows.items() if r["group"] == ref]
+            if members:
+                refs.extend(m for m in members if m not in refs)
+                continue
             (refs if ref in cve_ids or ref in finding_ids or ref in rows else unknown).append(ref)
         if unknown:
             corrections.append(
@@ -634,6 +678,20 @@ def verify(
                 "title": f"Decidir sobre {', '.join(in_use)}: cambiar de base o aceptar",
                 "action": "Cambiar a una imagen base sin estas vulnerabilidades o aceptarlas "
                 "con una excepción documentada; la app los necesita.",
+            }
+        # Ni prometer «actualizar» lo que no tiene versión que lo corrija.
+        no_fix = [r for r in refs if r in rows and not rows[r]["fix_available"]]
+        text = f"{pr.get('title', '')} {pr.get('action', '')}".lower()
+        if no_fix and _UPDATE_WORDS.search(text):
+            corrections.append(
+                f"«{pr.get('title', '')}»: {', '.join(no_fix)} no tiene versión que lo corrija; "
+                "actualizar no lo resuelve. Lo reformulo."
+            )
+            pr = {
+                **pr,
+                "title": f"Decidir sobre {', '.join(no_fix)}: sin parche publicado",
+                "action": "No hay versión que lo corrija: vigilar el aviso del proveedor, "
+                "cambiar de imagen base o aceptarlo con una excepción documentada.",
             }
         # El texto libre tampoco puede dar por prescindible algo que la app carga, aunque
         # no lo cite en findings (p. ej. «paquetes como openssl-libs no son necesarios»).
@@ -772,9 +830,9 @@ def research(
         "facts": data["facts"],
         "base_images": data["base_images"],
         "configuration_findings": data["configuration_findings"],
-        "vulnerable_packages": [
-            {k: r[k] for k in ("package", "runtime", "fix_available", "max_severity")}
-            for r in data["vulnerable_packages"]
+        "package_groups": [
+            {"group": g["group"], "packages": [p["package"] for p in g["packages"]]}
+            for g in data["package_groups"]
         ],
     }
     return catalog_research.research(
@@ -805,8 +863,7 @@ def _invoke(data: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
                 "structured_outputs": {"json": schema, "disable_any_whitespace": True},
             },
         )
-        out = model.invoke(messages)
-        return json.loads(str(out.content))
+        return llm.invoke_json(model, messages)
     model = llm.build_chat_model(max_tokens=9000, timeout=900)
     raw = model.with_structured_output(schema, method="json_schema").invoke(messages)
     if not isinstance(raw, dict):

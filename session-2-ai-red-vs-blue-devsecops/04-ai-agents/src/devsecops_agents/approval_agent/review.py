@@ -334,7 +334,7 @@ def _invoke(data: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
                 "structured_outputs": {"json": schema, "disable_any_whitespace": True},
             },
         )
-        return json.loads(str(model.invoke(messages).content))
+        return llm.invoke_json(model, messages)
     model = llm.build_chat_model(max_tokens=7000, timeout=900)
     raw = model.with_structured_output(schema, method="json_schema").invoke(messages)
     if not isinstance(raw, dict):

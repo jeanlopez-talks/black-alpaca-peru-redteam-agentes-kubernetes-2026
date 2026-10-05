@@ -6,6 +6,8 @@ import json
 import time
 from types import SimpleNamespace
 
+import pytest
+
 from devsecops_agents.approval_agent import review
 from devsecops_agents.approval_agent.cluster import PipelineRunSummary, Stage
 from devsecops_agents.red_attacker.payloads import ATTACK_PRS
@@ -150,3 +152,17 @@ def test_summary_sends_when_each_run_started(monkeypatch):
     monkeypatch.setattr(cluster, "read_argocd_apps", lambda: [])
     out = server.handle({"skill": "summarize-pipeline"}, "")
     assert out["pipelineruns"][0]["started"] == "2026-10-05T04:00:00Z"
+
+
+def test_a_cut_json_answer_is_retried_once():
+    from devsecops_agents.common import llm
+
+    answers = iter(['{"overview": "cortado', '{"overview": "ok", "runs": {}}'])
+
+    class Flaky:
+        def invoke(self, _msgs):
+            return SimpleNamespace(content=next(answers))
+
+    assert llm.invoke_json(Flaky(), []) == {"overview": "ok", "runs": {}}
+    with pytest.raises(ValueError, match="tras 2 intentos"):
+        llm.invoke_json(SimpleNamespace(invoke=lambda m: SimpleNamespace(content="no")), [])

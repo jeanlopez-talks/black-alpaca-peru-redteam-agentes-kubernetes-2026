@@ -15,9 +15,12 @@ lanza `LLMUnavailableError` y cada agente cae a su modo determinista.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 DEFAULT_PROVIDER = "openai-compatible"
 DEFAULT_LOCAL_BASE_URL = "http://vllm.inference.svc.cluster.local:8000/v1"
@@ -96,3 +99,61 @@ def build_chat_model(temperature: float = 0, **kwargs: Any) -> Any:
         )
     except ImportError as exc:
         raise LLMUnavailableError(f"LangChain no disponible: {exc}") from exc
+
+
+def usage_of(reply: Any) -> dict[str, Any]:
+    """Por qué terminó y cuántos tokens usó una respuesta (metadatos de LangChain/vLLM)."""
+    meta = getattr(reply, "response_metadata", None) or {}
+    usage = meta.get("token_usage") or {}
+    details = usage.get("completion_tokens_details") or {}
+    return {
+        "finish_reason": meta.get("finish_reason", ""),
+        "prompt_tokens": usage.get("prompt_tokens", 0),
+        "completion_tokens": usage.get("completion_tokens", 0),
+        "reasoning_tokens": details.get("reasoning_tokens", 0) or 0,
+        "reasoning_chars": len(
+            str((getattr(reply, "additional_kwargs", None) or {}).get("reasoning_content", ""))
+        ),
+    }
+
+
+def invoke_json(
+    model: Any, messages: list[Any], attempts: int = 2, stats: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    """Llama al modelo, lee su respuesta como JSON y deja constancia de cada intento.
+
+    Con salida guiada el JSON solo es inválido si la respuesta se corta
+    (finish_reason=length: el razonamiento y la salida agotaron max_tokens). El remedio es
+    dimensionar max_tokens y lo que se pide; el reintento es solo una red de seguridad y
+    queda registrado (stats y log) con el motivo.
+    """
+    import json
+    import time
+
+    last: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        started = time.monotonic()
+        reply = model.invoke(messages)
+        info = usage_of(reply) | {
+            "attempt": attempt,
+            "seconds": round(time.monotonic() - started, 1),
+        }
+        try:
+            value = json.loads(str(reply.content))
+            if not isinstance(value, dict):
+                raise ValueError(f"se esperaba un objeto JSON, llegó {type(value).__name__}")
+            info["ok"] = True
+        except ValueError as exc:  # JSONDecodeError es un ValueError
+            info["ok"], last = False, exc
+        if stats is not None:
+            stats.append(info)
+        _log.info("llamada al modelo: %s", info)
+        if info["ok"]:
+            return value
+        _log.warning(
+            "respuesta no válida (finish_reason=%s, %s tokens de salida): %s",
+            info["finish_reason"],
+            info["completion_tokens"],
+            last,
+        )
+    raise ValueError(f"el modelo no devolvió JSON válido tras {attempts} intentos: {last}")
