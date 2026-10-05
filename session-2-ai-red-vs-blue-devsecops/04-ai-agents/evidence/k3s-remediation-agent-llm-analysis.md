@@ -51,3 +51,18 @@ del agente, **solo** las 6 líneas del diff en el `Containerfile` permitido.
 
 Lección para la charla: el modelo analiza y decide, pero lo que llega a la persona lo
 acotan los hechos y un verificador que muestra cada error que le corrigió al modelo.
+
+## 5. Tokens: medir antes de optimizar (`agents-v0.7.0`)
+
+Un análisis falló con JSON cortado. Se supuso que se agotaban los tokens; medirlo (cada
+llamada registra ahora `finish_reason` y tokens) lo desmintió: el análisis usaba ~2,2k de
+salida de 9k. La causa queda registrada si se repite; el reintento es solo red de
+seguridad. Lo que sí sobraba era la entrada:
+
+| Versión | Entrada del análisis | Salida | Tiempo por corrida |
+|---|---|---|---|
+| Lista completa de CVE por paquete | ~4,8k tokens | ~2,2k | 73–113 s |
+| Paquetes agrupados por uso (4 grupos, no 22 paquetes) | **~2,7k** | ~1,4–2,0k | **51–52 s** |
+
+Tres actos a la vez: las 3 corridas analizadas, `finish_reason=stop`, ningún reintento.
+La lista completa de CVE sigue en el informe y en Backstage; solo deja de ir al modelo.
