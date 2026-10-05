@@ -36,6 +36,16 @@ una **segunda opinión** sobre cada PipelineRun:
 4. **Decide tú:** las propuestas solo se ejecutan con el token de un humano, y aprobar
    un despliegue sigue siendo una anotación en Git que revisa una persona.
 
+## Varias corridas a la vez
+
+- **Remediación:** el agente guarda las últimas 10 corridas y el modelo las analiza en
+  cola, una tras otra, sin descartar ninguna. En la pestaña eliges la corrida (la más
+  reciente primero); el chat y «aplica R…» trabajan sobre la que ves, y cada acción
+  pendiente recuerda de qué corrida es.
+- **Aprobación:** una revisión del modelo por corrida, guardada mientras la corrida no
+  cambie; cuando llega una nueva solo se revisa esa. La tarjeta muestra cada corrida en su
+  desplegable, con su decisión, su revisión, sus consultas MCP y lo que recibió el modelo.
+
 ## Controles
 
 | Riesgo | Control |
