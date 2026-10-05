@@ -53,6 +53,28 @@ spec:
       ports:
         - port: 8080
           protocol: TCP
+    # MCP de Backstage por agentgateway (lineamientos del catálogo).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agentgateway-system
+          podSelector:
+            matchLabels:
+              gateway.networking.k8s.io/gateway-name: agentgateway-proxy
+      ports:
+        - port: 80
+          protocol: TCP
+    # Keycloak (token client_credentials) por el Gateway interno.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+          podSelector:
+            matchLabels:
+              gateway.envoyproxy.io/owning-gateway-name: interno
+      ports:
+        - port: 10443
+          protocol: TCP
     # LLM local. La plataforma también debe admitirlo en el ingress de `inference`
     # (hoy solo entran agentgateway, kagent, kserve y gastos).
     - to:

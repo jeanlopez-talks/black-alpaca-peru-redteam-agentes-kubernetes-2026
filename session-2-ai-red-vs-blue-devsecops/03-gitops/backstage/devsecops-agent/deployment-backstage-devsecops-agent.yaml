@@ -54,6 +54,14 @@ spec:
               value: qwen3-8b
             - name: OPENAI_BASE_URL
               value: http://vllm.inference.svc.cluster.local:8000/v1
+            # Lineamientos del catálogo de Backstage por MCP, con su propio cliente de
+            # Keycloak (agentgateway comprueba el rol y OpenFGA la relación can_call).
+            - name: MCP_URL
+              value: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/mcp
+            - name: OIDC_TOKEN_URL
+              value: https://auth.labjp.xyz/realms/homelab/protocol/openid-connect/token
+            - name: OIDC_CLIENT_ID
+              value: devsecops-approval-agent
           envFrom:
             - secretRef:
                 name: backstage-devsecops-agent # ExternalSecret (OpenBao)
