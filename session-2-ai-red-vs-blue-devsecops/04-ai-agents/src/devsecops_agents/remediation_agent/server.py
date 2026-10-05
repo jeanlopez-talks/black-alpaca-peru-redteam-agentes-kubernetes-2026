@@ -29,10 +29,10 @@ from a2a.types import AgentCard, AgentSkill
 from devsecops_agents import __version__
 from devsecops_agents.common import llm
 from devsecops_agents.common.a2a_server import build_agent_card, text_reply
+from devsecops_agents.common.backstage_mcp import GuidelineClient
 from devsecops_agents.remediation_agent import conversation, llm_analysis
 from devsecops_agents.remediation_agent.analysis import Analysis, analyze, rules_explanation
 from devsecops_agents.remediation_agent.facts import image_facts
-from devsecops_agents.remediation_agent.guidelines import GuidelineClient
 from devsecops_agents.remediation_agent.policies import MISMATCH, PolicyReader, verify
 
 log = logging.getLogger(__name__)

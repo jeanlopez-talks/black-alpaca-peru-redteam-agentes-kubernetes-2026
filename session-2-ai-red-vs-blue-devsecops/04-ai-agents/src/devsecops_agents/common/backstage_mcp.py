@@ -1,4 +1,4 @@
-"""Lineamientos del homelab leídos por MCP: Backstage `catalog-read` vía agentgateway.
+"""Cliente MCP del catálogo de Backstage (vía agentgateway), común a los agentes.
 
 El agente se identifica con su propio cliente de Keycloak (`client_credentials`) y llama
 a `backstage_catalog.get-catalog-entity` por el nombre de la entidad de la regla. Que
@@ -105,7 +105,7 @@ class GuidelineClient:
                     "params": {
                         "protocolVersion": "2025-06-18",
                         "capabilities": {},
-                        "clientInfo": {"name": "devsecops-remediation-agent", "version": "1"},
+                        "clientInfo": {"name": self.client_id or "devsecops-agent", "version": "1"},
                     },
                 },
             )
