@@ -575,3 +575,15 @@ def test_the_model_can_only_cite_guidelines_it_read():
     v = llm_analysis.verify(raw, _analysis(), _facts(), CONTAINERFILE, read)
     assert v["findings"][0]["guideline"] == "ninguno"
     assert any("no leyó del catálogo" in c for c in v["corrections"])
+
+
+def test_patch_summary_is_written_by_code_not_by_the_model():
+    raw = _raw(remove_packages=["vim-minimal"])
+    raw["patch"]["explanation"] = "Quita vim y fija la imagen base con digest."
+    v = llm_analysis.verify(raw, _analysis(), _facts(), CONTAINERFILE)
+    recs = llm_analysis.to_recommendations(v, _analysis())
+    fix = next(r.fix for r in recs if r.fix and r.fix.diff)
+    assert (
+        fix.summary == "El cambio quita 1 paquete que la app no usa. Lo escribe y valida el agente."
+    )
+    assert "digest" not in fix.summary

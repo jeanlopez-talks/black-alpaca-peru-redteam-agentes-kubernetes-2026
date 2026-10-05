@@ -700,6 +700,17 @@ def _guideline(refs: list[str], chosen: dict[str, str] | None = None) -> str | N
     return None
 
 
+def patch_fact(patch: dict[str, Any]) -> str:
+    """Qué hace el cambio, dicho por el código (el texto del modelo puede prometer más)."""
+    mods, pkgs = patch.get("remove_modules") or [], patch.get("remove_packages") or []
+    parts = []
+    if mods:
+        parts.append(f"{len(mods)} módulo{'s' if len(mods) != 1 else ''} ({', '.join(mods)})")
+    if pkgs:
+        parts.append(f"{len(pkgs)} paquete{'s' if len(pkgs) != 1 else ''} que la app no usa")
+    return "El cambio quita " + " y ".join(parts) + ". Lo escribe y valida el agente."
+
+
 def to_recommendations(verified: dict[str, Any], analysis: Analysis) -> list[Recommendation]:
     """Las prioridades del modelo, ya verificadas, en el formato que muestra Backstage."""
     verdicts = {f["id"]: f["verdict"] for f in verified["findings"]}
@@ -715,7 +726,7 @@ def to_recommendations(verified: dict[str, Any], analysis: Analysis) -> list[Rec
         if pr.get("applies_patch") and patch["status"] == "accepted" and not patch_used:
             fix = Fix(
                 type="containerfile-patch",
-                summary=f"{pr.get('action', '')} {patch['explanation']}".strip(),
+                summary=patch_fact(patch),
                 diff=patch["diff"],
                 patched=patch["patched"],
             )
@@ -748,7 +759,7 @@ def to_recommendations(verified: dict[str, Any], analysis: Analysis) -> list[Rec
                 evidence=patch["remove_packages"],
                 fix=Fix(
                     type="containerfile-patch",
-                    summary=patch["explanation"],
+                    summary=patch_fact(patch),
                     diff=patch["diff"],
                     patched=patch["patched"],
                 ),
