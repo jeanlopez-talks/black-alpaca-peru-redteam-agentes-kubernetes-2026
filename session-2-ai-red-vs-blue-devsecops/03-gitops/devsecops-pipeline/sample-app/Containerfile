@@ -7,4 +7,10 @@ FROM registry.access.redhat.com/ubi9/nginx-120:9.8
 
 COPY index.html /opt/app-root/src/
 
+# Agente de remediación: quita paquetes que el proceso principal no usa
+# (superficie de ataque y CVE sin corrección). Revisado por una persona.
+USER 0
+RUN rpm -e --nodeps emacs-filesystem expat gd gdb-gdbserver libX11 libX11-common libblkid libfdisk libmount libpng libuuid nginx-all-modules nginx-mod-http-image-filter python3 python3-libs python3-pip-wheel util-linux util-linux-core vim-filesystem vim-minimal && rm -rf /var/cache/dnf /var/cache/yum
+USER 1001
+
 CMD ["nginx", "-g", "daemon off;"]
