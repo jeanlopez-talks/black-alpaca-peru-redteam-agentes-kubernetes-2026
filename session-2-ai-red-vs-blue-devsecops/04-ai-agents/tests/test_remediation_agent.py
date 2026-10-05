@@ -90,12 +90,6 @@ POLICIES = {
 }
 
 
-@pytest.fixture(autouse=True)
-def _no_model_by_default(monkeypatch):
-    """Sin modelo salvo que el test lo pida: advise no lanza el análisis en segundo plano."""
-    monkeypatch.setenv("LLM_PROVIDER", "none")
-
-
 class FakePolicies:
     def __init__(self, policies=None) -> None:
         self.policies = POLICIES if policies is None else policies

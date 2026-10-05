@@ -6,16 +6,9 @@ import json
 import time
 from types import SimpleNamespace
 
-import pytest
-
 from devsecops_agents.approval_agent import review
 from devsecops_agents.approval_agent.cluster import PipelineRunSummary, Stage
 from devsecops_agents.red_attacker.payloads import ATTACK_PRS
-
-
-@pytest.fixture(autouse=True)
-def _no_model_by_default(monkeypatch):
-    monkeypatch.setenv("LLM_PROVIDER", "none")
 
 
 def _run(name="act3", pr="pr-02-poisoned.diff", blue="APPROVE", admission="REJECTED"):

@@ -6,19 +6,10 @@ import json
 import time
 from types import SimpleNamespace
 
-import pytest
-
 from devsecops_agents.remediation_agent import llm_analysis
 from devsecops_agents.remediation_agent.analysis import analyze
 from devsecops_agents.remediation_agent.facts import image_facts
 from devsecops_agents.remediation_agent.server import RemediationAgent
-
-
-@pytest.fixture(autouse=True)
-def _no_model_by_default(monkeypatch):
-    """Sin modelo salvo que el test lo pida: advise no llama a la red."""
-    monkeypatch.setenv("LLM_PROVIDER", "none")
-
 
 CONTAINERFILE = (
     "FROM registry.access.redhat.com/ubi9/nginx-120:9.8\n"
