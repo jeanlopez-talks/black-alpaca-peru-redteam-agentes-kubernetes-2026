@@ -61,8 +61,12 @@ def model_id() -> str:
     return os.getenv("LLM_MODEL", "").strip() or default
 
 
-def build_chat_model(**kwargs: Any) -> Any:
-    """Construye el ChatModel de LangChain (temperature=0 para una demo reproducible)."""
+def build_chat_model(temperature: float = 0, **kwargs: Any) -> Any:
+    """Construye el ChatModel de LangChain (temperature=0 por defecto: demo reproducible).
+
+    Con razonamiento activado (Qwen3 thinking) conviene 0.6: en greedy el razonamiento
+    puede entrar en bucle.
+    """
     name = provider_name()
     provider = _PROVIDERS.get(name)
     if provider is None:
@@ -82,13 +86,13 @@ def build_chat_model(**kwargs: Any) -> Any:
                 base_url=os.getenv("OPENAI_BASE_URL", "").strip() or DEFAULT_LOCAL_BASE_URL,
                 # vLLM no valida la clave, pero el cliente OpenAI exige un valor.
                 api_key=os.getenv("OPENAI_API_KEY", "not-needed"),
-                temperature=0,
+                temperature=temperature,
                 **kwargs,
             )
         from langchain.chat_models import init_chat_model
 
         return init_chat_model(
-            model_id, model_provider=provider.langchain_name, temperature=0, **kwargs
+            model_id, model_provider=provider.langchain_name, temperature=temperature, **kwargs
         )
     except ImportError as exc:
         raise LLMUnavailableError(f"LangChain no disponible: {exc}") from exc

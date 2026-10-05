@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from typing import Any
@@ -71,6 +72,32 @@ def advise_card(public_url: str) -> AgentCard:
     )
 
 
+def _dicts(value: Any) -> list[dict[str, Any]]:
+    return [x for x in value if isinstance(x, dict)] if isinstance(value, list) else []
+
+
+def _clean_trivy(raw: Any) -> list[dict[str, Any]]:
+    """La forma de los informes de Trivy, garantizada una sola vez a la entrada: listas de
+    objetos donde se esperan. Lo demás se descarta (la puerta acepta cualquier JSON)."""
+    reports = []
+    for report in _dicts(raw):
+        results = []
+        for result in _dicts(report.get("Results")):
+            results.append(
+                {
+                    **result,
+                    "Vulnerabilities": _dicts(result.get("Vulnerabilities")),
+                    "Misconfigurations": _dicts(result.get("Misconfigurations")),
+                    "Packages": _dicts(result.get("Packages")),
+                }
+            )
+        meta = report.get("Metadata")
+        reports.append(
+            {**report, "Results": results, "Metadata": meta if isinstance(meta, dict) else {}}
+        )
+    return reports
+
+
 class RemediationAgent:
     """Lógica compartida por las dos puertas (un solo estado en memoria)."""
 
@@ -85,6 +112,7 @@ class RemediationAgent:
         # sigue siendo la última (si no, llegó otro PipelineRun mientras pensaba).
         self._lock = threading.Lock()
         self._generation = 0
+        self._model_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="model")
 
     def _attach_guidelines(self, recs: list[Any]) -> tuple[list[str], list[str]]:
         """Lineamiento de cada recomendación, contrastado con la política de Kyverno."""
@@ -113,8 +141,11 @@ class RemediationAgent:
         return explanation
 
     def advise(self, req: dict[str, Any]) -> dict[str, Any]:
-        containerfile = str(req.get("containerfile", ""))
-        trivy = list(req.get("trivy") or [])
+        # Lo envía la etapa del pipeline, donde corre código del PR: se acepta solo lo que
+        # tiene la forma esperada, sin lanzar excepciones por una entrada mal formada.
+        raw_cf = req.get("containerfile", "")
+        containerfile = raw_cf if isinstance(raw_cf, str) else ""
+        trivy = _clean_trivy(req.get("trivy"))
         vulnerable = [
             v.get("PkgName", "")
             for r in trivy
@@ -171,19 +202,26 @@ class RemediationAgent:
         # cual, aunque el modelo lo sustituya después en memoria.
         snapshot = copy.deepcopy(report)
         if use_model:
-            threading.Thread(
-                target=self._analyze_with_model,
-                args=(generation, result, facts, containerfile),
-                daemon=True,
-            ).start()
+            # Un solo análisis del modelo a la vez: si llegan varios PipelineRun seguidos,
+            # los que queden atrás se descartan al empezar (ver _analyze_with_model).
+            self._model_pool.submit(
+                self._analyze_with_model, generation, result, facts, containerfile
+            )
         return snapshot
 
     def _analyze_with_model(
         self, generation: int, result: Analysis, facts: dict[str, Any], containerfile: str
     ) -> None:
-        """El análisis del modelo, verificado. Sustituye al de reglas si sigue vigente."""
+        """El análisis del modelo, verificado. Sustituye al de reglas si sigue vigente.
+
+        El informe se SUSTITUYE (dict nuevo), nunca se modifica: quien lo esté leyendo
+        (chat, latest-report) sigue con una versión entera y coherente.
+        """
+        with self._lock:
+            if generation != self._generation:
+                return  # ya hay un análisis más reciente: este no se publicaría
         try:
-            verified = llm_analysis.run(result, facts, containerfile)
+            verified = llm_analysis.run(result, facts, containerfile, self.guidelines)
             recs = llm_analysis.to_recommendations(verified, result)
             if not recs:
                 raise ValueError("el modelo no dejó ninguna prioridad verificable")
@@ -191,24 +229,30 @@ class RemediationAgent:
             log.warning("el modelo no pudo analizar: %s", exc)
             with self._lock:
                 if generation == self._generation and self.state.report:
-                    self.state.report["analysis_status"] = "failed"
-                    self.state.report["llm_error"] = str(exc)[:300]
+                    self.state.report = {
+                        **self.state.report,
+                        "analysis_status": "failed",
+                        "llm_error": str(exc)[:300],
+                    }
             return
         missing, poisoned = self._attach_guidelines(recs)
         model_result = replace(result, recommendations=recs)
         with self._lock:
             if generation != self._generation or not self.state.report:
                 return  # llegó otro análisis mientras el modelo pensaba
-            report = self.state.report
-            report["recommendations"] = [r.as_dict() for r in recs]
-            report["explanation"] = self._with_warnings(verified["overview"], missing, poisoned)
-            report["engine"] = "llm"
-            report["analysis_status"] = "done"
-            report["llm"] = {k: v for k, v in verified.items() if k != "patch"} | {
-                "patch": {k: v for k, v in verified["patch"].items() if k != "patched"}
+            report = {
+                **self.state.report,
+                "recommendations": [r.as_dict() for r in recs],
+                "explanation": self._with_warnings(verified["overview"], missing, poisoned),
+                "engine": "llm",
+                "analysis_status": "done",
+                "llm": {k: v for k, v in verified.items() if k != "patch"}
+                | {"patch": {k: v for k, v in verified["patch"].items() if k != "patched"}},
             }
+            self.state.report = report
             self.state.analysis = model_result
-            self.state.actions.clear()
+            # Las acciones pendientes NO se borran: la persona puede tener una en pantalla
+            # y sigue siendo válida (lleva su propio diff, del mismo PipelineRun).
         log.info(
             "informe %s (modelo %s, %.0f s): %d prioridades, %d correcciones del verificador",
             report["pipeline_run"],

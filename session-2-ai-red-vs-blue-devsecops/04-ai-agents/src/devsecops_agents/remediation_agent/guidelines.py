@@ -22,6 +22,12 @@ import httpx
 log = logging.getLogger(__name__)
 
 TOOL_GET_ENTITY = "backstage_catalog.get-catalog-entity"
+TOOL_QUERY = "backstage_catalog.query-catalog-entities"
+# Los lineamientos son las entidades Resource con la anotación del ID de la regla.
+GUIDELINES_QUERY = {
+    "kind": "Resource",
+    "metadata.annotations.security.labjp.xyz/rule-id": {"$exists": True},
+}
 _TOKEN_MARGIN_S = 30
 
 
@@ -43,6 +49,7 @@ class GuidelineClient:
         self._token = ""
         self._token_expiry = 0.0
         self._cache: dict[str, dict[str, str] | None] = {}
+        self._index: list[dict[str, str]] | None = None
 
     @property
     def configured(self) -> bool:
@@ -140,6 +147,37 @@ class GuidelineClient:
         self._cache[entity_name] = guideline
         return guideline
 
+    def index(self) -> list[dict[str, str]]:
+        """Índice compacto de los lineamientos del catálogo (nombre, ID, título).
+
+        La consulta devuelve las entidades completas (~100 KB): al modelo solo le llega
+        lo que necesita para elegir cuáles leer.
+        """
+        if self._index is not None:
+            return self._index
+        if not self.configured:
+            return []
+        result = self._call_tool(TOOL_QUERY, {"query": GUIDELINES_QUERY})
+        payload = json.loads(result["content"][0]["text"])
+        entities = payload if isinstance(payload, list) else payload.get("items", [])
+        self._index = sorted(
+            (
+                {
+                    "name": str(e.get("metadata", {}).get("name", "")),
+                    "id": str(
+                        (e.get("metadata", {}).get("annotations") or {}).get(
+                            "security.labjp.xyz/rule-id", ""
+                        )
+                    ),
+                    "title": str(e.get("metadata", {}).get("title", "")),
+                }
+                for e in entities
+                if isinstance(e, dict)
+            ),
+            key=lambda g: g["id"],
+        )
+        return self._index
+
 
 def to_guideline(entity: dict[str, Any]) -> dict[str, str]:
     """Campos del lineamiento a partir de la entidad Resource del catálogo."""
@@ -151,4 +189,6 @@ def to_guideline(entity: dict[str, Any]) -> dict[str, str]:
         "title": meta.get("title", meta.get("name", "")),
         "url": link,
         "remedy": ann.get("security.labjp.xyz/remediation", ""),
+        # Para que el modelo entienda la regla (texto del catálogo: dato no confiable).
+        "description": str(meta.get("description", ""))[:500],
     }
