@@ -112,6 +112,8 @@ class RemediationAgent:
         # sigue siendo la última (si no, llegó otro PipelineRun mientras pensaba).
         self._lock = threading.Lock()
         self._generation = 0
+        # Generación vigente de cada corrida y corrida de cada generación.
+        self._run_generation: dict[str, int] = {}
         self._model_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="model")
 
     def _attach_guidelines(self, recs: list[Any]) -> tuple[list[str], list[str]]:
@@ -181,16 +183,25 @@ class RemediationAgent:
             "analysis_status": "pending" if use_model else "rules-only",
             "llm": None,
         }
+        run = report["pipeline_run"]
         with self._lock:
             self._generation += 1
             generation = self._generation
-            # Un informe nuevo invalida las acciones preparadas sobre el anterior.
+            self._run_generation[run] = generation
+            # La corrida pasa a ser la más reciente del historial (se guardan MAX_RUNS).
+            self.state.runs.pop(run, None)
+            self.state.runs[run] = conversation.RunState(report, result, containerfile)
+            while len(self.state.runs) > conversation.MAX_RUNS:
+                self.state.runs.pop(next(iter(self.state.runs)))
             self.state.report, self.state.analysis, self.state.containerfile = (
                 report,
                 result,
                 containerfile,
             )
-            self.state.actions.clear()
+            # Un análisis nuevo de ESTA corrida invalida sus acciones preparadas; las de
+            # otras corridas siguen valiendo.
+            for action_id in [a for a, x in self.state.actions.items() if x.run == run]:
+                self.state.actions.pop(action_id)
         log.info(
             "informe %s (reglas): %d recomendaciones, sin leer: %s, envenenados: %s",
             report["pipeline_run"],
@@ -202,15 +213,21 @@ class RemediationAgent:
         # cual, aunque el modelo lo sustituya después en memoria.
         snapshot = copy.deepcopy(report)
         if use_model:
-            # Un solo análisis del modelo a la vez: si llegan varios PipelineRun seguidos,
-            # los que queden atrás se descartan al empezar (ver _analyze_with_model).
+            # Un análisis del modelo a la vez, en cola: si llegan varias corridas seguidas,
+            # se analizan todas (una tras otra). Solo se descarta el de una corrida que se
+            # vuelve a analizar antes de que le toque (ver _analyze_with_model).
             self._model_pool.submit(
-                self._analyze_with_model, generation, result, facts, containerfile
+                self._analyze_with_model, generation, run, result, facts, containerfile
             )
         return snapshot
 
     def _analyze_with_model(
-        self, generation: int, result: Analysis, facts: dict[str, Any], containerfile: str
+        self,
+        generation: int,
+        run: str,
+        result: Analysis,
+        facts: dict[str, Any],
+        containerfile: str,
     ) -> None:
         """El análisis del modelo, verificado. Sustituye al de reglas si sigue vigente.
 
@@ -218,8 +235,8 @@ class RemediationAgent:
         (chat, latest-report) sigue con una versión entera y coherente.
         """
         with self._lock:
-            if generation != self._generation:
-                return  # ya hay un análisis más reciente: este no se publicaría
+            if self._run_generation.get(run) != generation:
+                return  # esta corrida se volvió a analizar: este resultado ya no vale
         try:
             verified = llm_analysis.run(result, facts, containerfile, self.guidelines)
             recs = llm_analysis.to_recommendations(verified, result)
@@ -228,20 +245,23 @@ class RemediationAgent:
         except Exception as exc:  # noqa: BLE001 - sin modelo, queda el análisis por reglas
             log.warning("el modelo no pudo analizar: %s", exc)
             with self._lock:
-                if generation == self._generation and self.state.report:
-                    self.state.report = {
-                        **self.state.report,
+                current = self.state.runs.get(run)
+                if self._run_generation.get(run) == generation and current:
+                    failed = {
+                        **current.report,
                         "analysis_status": "failed",
                         "llm_error": str(exc)[:300],
                     }
+                    self._publish(run, failed, current.analysis)
             return
         missing, poisoned = self._attach_guidelines(recs)
         model_result = replace(result, recommendations=recs)
         with self._lock:
-            if generation != self._generation or not self.state.report:
-                return  # llegó otro análisis mientras el modelo pensaba
+            current = self.state.runs.get(run)
+            if self._run_generation.get(run) != generation or current is None:
+                return  # la corrida se volvió a analizar (o salió del historial)
             report = {
-                **self.state.report,
+                **current.report,
                 "recommendations": [r.as_dict() for r in recs],
                 "explanation": self._with_warnings(verified["overview"], missing, poisoned),
                 "engine": "llm",
@@ -249,8 +269,7 @@ class RemediationAgent:
                 "llm": {k: v for k, v in verified.items() if k != "patch"}
                 | {"patch": {k: v for k, v in verified["patch"].items() if k != "patched"}},
             }
-            self.state.report = report
-            self.state.analysis = model_result
+            self._publish(run, report, model_result)
             # Las acciones pendientes NO se borran: la persona puede tener una en pantalla
             # y sigue siendo válida (lleva su propio diff, del mismo PipelineRun).
         log.info(
@@ -262,6 +281,30 @@ class RemediationAgent:
             len(verified["corrections"]),
         )
 
+    def _publish(self, run: str, report: dict[str, Any], analysis: Analysis) -> None:
+        """Sustituye el informe de una corrida (con el lock tomado). Si es la última,
+        también pasa a ser el de por defecto."""
+        current = self.state.runs[run]
+        self.state.runs[run] = conversation.RunState(report, analysis, current.containerfile)
+        if (self.state.report or {}).get("pipeline_run") == run:
+            self.state.report, self.state.analysis = report, analysis
+
+    def _run_list(self) -> list[dict[str, Any]]:
+        """Corridas del historial, de la más reciente a la más antigua (lo que lista Backstage)."""
+        return [
+            {
+                "pipeline_run": name,
+                "generated_at": r.report.get("generated_at", ""),
+                "engine": r.report.get("engine", ""),
+                "analysis_status": r.report.get("analysis_status", ""),
+                "vulnerabilities": r.report.get("summary", {})
+                .get("vulnerabilities", {})
+                .get("total", 0),
+                "recommendations": len(r.report.get("recommendations", [])),
+            }
+            for name, r in reversed(self.state.runs.items())
+        ]
+
     def handle_chat_port(self, context_id: str, raw: str) -> dict[str, Any]:
         try:
             req = json.loads(raw)
@@ -272,9 +315,12 @@ class RemediationAgent:
         skill = req.get("skill")
         if skill == "latest-report":
             with self._lock:  # el hilo del modelo puede estar sustituyéndolo
-                return {"report": copy.deepcopy(self.state.report)}
+                chosen = self.state.runs.get(str(req.get("pipeline_run") or ""))
+                report = chosen.report if chosen else self.state.report
+                return {"report": copy.deepcopy(report), "runs": self._run_list()}
         if skill == "chat":
-            return conversation.chat(self.state, context_id, str(req.get("message", "")), self.repo)
+            view = conversation.for_run(self.state, str(req.get("pipeline_run") or ""))
+            return conversation.chat(view, context_id, str(req.get("message", "")), self.repo)
         if skill == "confirm-action":
             return conversation.confirm(self.state, context_id, str(req.get("action_id", "")))
         if skill == "cancel-action":

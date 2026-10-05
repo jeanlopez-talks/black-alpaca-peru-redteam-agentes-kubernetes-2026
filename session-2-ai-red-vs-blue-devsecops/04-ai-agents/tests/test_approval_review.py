@@ -98,25 +98,45 @@ class FakeModel:
         return SimpleNamespace(content=json.dumps(self.out))
 
 
-def test_review_cache_answers_pending_then_done(monkeypatch):
+def test_each_run_is_reviewed_once_and_on_its_own(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "openai-compatible")
-    out = _raw(decision="no-aprobar", blue_assessment="lo engañaron", guideline="ninguno")
-    monkeypatch.setattr(review.llm, "build_chat_model", lambda **kw: FakeModel(out))
+    seen = []
+
+    class OneRunModel:
+        def invoke(self, msgs):
+            data = json.loads(msgs[-1].content.split("\n", 1)[1])
+            names = [r["run"] for r in data["runs"]]
+            seen.append(names)
+            out = _raw(decision="no-aprobar", blue_assessment="lo engañaron", guideline="ninguno")
+            return SimpleNamespace(
+                content=json.dumps({"overview": "o", "runs": {names[0]: out["runs"]["act3"]}})
+            )
+
+    monkeypatch.setattr(review.llm, "build_chat_model", lambda **kw: OneRunModel())
     cache = review.ReviewCache(guidelines=None)
-    runs = [_run()]
-    first = cache.get(runs)
-    assert first["status"] in ("pending", "done")
-    for _ in range(50):
-        state = cache.get(runs)
-        if state["status"] == "done":
-            break
-        time.sleep(0.05)
-    assert state["status"] == "done" and state["runs"][0]["decision"] == "no-aprobar"
-    assert state["input"]["data"]["runs"][0]["pr_diff"].startswith("diff --git")
+    runs = [_run("act3"), _run("act1", pr="pr-01-obvious.diff", blue="BLOCK", admission="")]
+
+    def wait():
+        for _ in range(100):
+            state = cache.get(runs)
+            if state["status"] == "done":
+                return state
+            time.sleep(0.05)
+        return state
+
+    state = wait()
+    assert [r["run"] for r in state["runs"]] == ["act3", "act1"]
+    assert all(r["status"] == "done" for r in state["runs"])
+    assert sorted(seen) == [["act1"], ["act3"]]  # una llamada por corrida
+    assert state["runs"][0]["input"]["data"]["runs"][0]["pr_diff"].startswith("diff --git")
+    # Una corrida nueva solo revisa esa.
+    runs.insert(0, _run("act4"))
+    wait()
+    assert sorted(seen) == [["act1"], ["act3"], ["act4"]]
 
 
 def test_without_model_the_review_says_rules_only():
-    assert review.ReviewCache().get([_run()]) == {"status": "rules-only"}
+    assert review.ReviewCache().get([_run()]) == {"status": "rules-only", "runs": []}
 
 
 def test_evidence_can_only_be_a_line_the_pr_adds():

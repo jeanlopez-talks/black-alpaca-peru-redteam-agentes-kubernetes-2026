@@ -22,6 +22,7 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 DUEL_NAMESPACE = os.getenv("DUEL_NAMESPACE", "devsecops-duel")
+MAX_RUNS = 10
 ARGOCD_SERVER = os.getenv("ARGOCD_SERVER", "http://argocd-server.argocd.svc.cluster.local")
 ARGOCD_PROJECT = os.getenv("ARGOCD_PROJECT", "ai-red-vs-blue-devsecops")
 
@@ -43,6 +44,7 @@ class PipelineRunSummary:
     is_mock: bool = False
     # Parámetros del run: qué PR se revisó (pr-diff) y con qué revisor (blue-reviewer-url).
     params: dict[str, str] = field(default_factory=dict)
+    started: str = ""  # status.startTime (ISO 8601): ordena las corridas
 
 
 def _custom_objects_api() -> Any | None:
@@ -105,9 +107,17 @@ def read_pipelineruns() -> list[PipelineRunSummary]:
             if isinstance(p, dict) and isinstance(p.get("value"), str)
         }
         summaries.append(
-            PipelineRunSummary(run["metadata"]["name"], overall, stages, params=params)
+            PipelineRunSummary(
+                run["metadata"]["name"],
+                overall,
+                stages,
+                params=params,
+                started=str(run.get("status", {}).get("startTime", "")),
+            )
         )
-    return summaries or [_mock_pipelinerun()]
+    # De la más reciente a la más antigua, y solo las últimas MAX_RUNS.
+    summaries.sort(key=lambda r: r.started, reverse=True)
+    return summaries[:MAX_RUNS] or [_mock_pipelinerun()]
 
 
 def read_argocd_apps() -> list[dict[str, Any]]:

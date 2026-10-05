@@ -453,8 +453,8 @@ def test_a_stale_model_analysis_is_never_published(monkeypatch):
 
     monkeypatch.setattr(llm_analysis, "run", fake_run)
     agent = RemediationAgent(guidelines=Guidelines(), policies=Policies())
-    agent._generation = 5  # llegó otro análisis después
-    agent._analyze_with_model(4, _analysis(), _facts(), CONTAINERFILE)
+    agent._run_generation["act1"] = 5  # la corrida se volvió a analizar después
+    agent._analyze_with_model(4, "act1", _analysis(), _facts(), CONTAINERFILE)
     assert calls == []
 
 
@@ -587,3 +587,68 @@ def test_patch_summary_is_written_by_code_not_by_the_model():
         fix.summary == "El cambio quita 1 paquete que la app no usa. Lo escribe y valida el agente."
     )
     assert "digest" not in fix.summary
+
+
+def _wait_done(agent, runs):
+    for _ in range(100):
+        if all(agent.state.runs[r].report["analysis_status"] != "pending" for r in runs):
+            return
+        time.sleep(0.05)
+
+
+def test_every_run_keeps_its_own_analysis(monkeypatch):
+    out = _raw(remove_packages=["vim-minimal"])
+    out["findings"] = {"AVD-DS-0002": {"verdict": "falso-positivo", "reason": "1001"}}
+    monkeypatch.setenv("LLM_PROVIDER", "openai-compatible")
+    monkeypatch.setattr(llm_analysis.llm, "build_chat_model", lambda **kw: FakeModel(out, kw))
+    agent = RemediationAgent(guidelines=Guidelines(), policies=Policies())
+    base = {
+        "trivy": [TRIVY_FS, TRIVY_IMAGE],
+        "containerfile": CONTAINERFILE,
+        "containerfile_path": PATH,
+    }
+    agent.advise(base | {"pipeline_run": "act1"})
+    agent.advise(base | {"pipeline_run": "act3"})
+    _wait_done(agent, ["act1", "act3"])
+    # Las dos corridas se analizaron con el modelo: no se descarta la primera.
+    assert {r: agent.state.runs[r].report["engine"] for r in ("act1", "act3")} == {
+        "act1": "llm",
+        "act3": "llm",
+    }
+    listed = agent.handle_chat_port("c", json.dumps({"skill": "latest-report"}))
+    assert [r["pipeline_run"] for r in listed["runs"]] == ["act3", "act1"]
+    assert listed["report"]["pipeline_run"] == "act3"
+    one = agent.handle_chat_port(
+        "c", json.dumps({"skill": "latest-report", "pipeline_run": "act1"})
+    )
+    assert one["report"]["pipeline_run"] == "act1"
+
+
+def test_chat_acts_on_the_chosen_run_and_reanalysis_only_drops_its_actions(monkeypatch):
+    agent = RemediationAgent(guidelines=Guidelines(), policies=Policies())
+    base = {
+        "trivy": [TRIVY_FS, TRIVY_IMAGE],
+        "containerfile": CONTAINERFILE,
+        "containerfile_path": PATH,
+    }
+    agent.advise(base | {"pipeline_run": "act1"})
+    agent.advise(base | {"pipeline_run": "act3"})
+    patchable = next(
+        r.id for r in agent.state.runs["act1"].analysis.recommendations if r.fix and r.fix.patched
+    )
+    out = agent.handle_chat_port(
+        "c", json.dumps({"skill": "chat", "message": f"aplica {patchable}", "pipeline_run": "act1"})
+    )
+    action = out["pending_action"]
+    assert action and action["pipeline_run"] == "act1" and "act1" in action["target"]["branch"]
+    agent.advise(base | {"pipeline_run": "act3"})  # otra corrida: la acción sigue
+    assert action["id"] in agent.state.actions
+    agent.advise(base | {"pipeline_run": "act1"})  # la misma corrida: la acción caduca
+    assert action["id"] not in agent.state.actions
+
+
+def test_history_keeps_the_last_runs_only():
+    agent = RemediationAgent(guidelines=Guidelines(), policies=Policies())
+    for i in range(12):
+        agent.advise({"trivy": [], "containerfile": CONTAINERFILE, "pipeline_run": f"run-{i}"})
+    assert list(agent.state.runs) == [f"run-{i}" for i in range(2, 12)]

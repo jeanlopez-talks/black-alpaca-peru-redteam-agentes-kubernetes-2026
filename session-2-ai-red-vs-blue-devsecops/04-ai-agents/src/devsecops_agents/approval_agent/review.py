@@ -341,31 +341,31 @@ def _invoke(data: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
-def review(runs: list[PipelineRunSummary], guidelines: Any | None = None) -> dict[str, Any]:
-    """Consulta por MCP, revisión del modelo y verificación. Lanza si el modelo no responde."""
-    facts = [run_facts(r) for r in runs]
+def review_run(run: PipelineRunSummary, guidelines: Any | None = None) -> dict[str, Any]:
+    """Revisión de UNA corrida: consulta por MCP, revisión del modelo y verificación.
+
+    Una llamada por corrida: el prompt no crece con el número de corridas y, cuando llega
+    una nueva, solo se revisa esa. Lanza si el modelo no responde.
+    """
+    facts = [run_facts(run)]
+    f = facts[0]
     started = time.monotonic()
     read: dict[str, dict[str, str]] = {}
     calls: list[dict[str, Any]] = []
     if guidelines is not None and getattr(guidelines, "configured", False):
         try:
             summary = {
-                "runs": [
-                    {
-                        "run": f.run,
-                        "signals": f.signals,
-                        "failed_stages": f.failed_stages,
-                        "blue_decision": f.blue_decision,
-                        "admission": f.admission,
-                    }
-                    for f in facts
-                ]
+                "run": f.run,
+                "signals": f.signals,
+                "failed_stages": f.failed_stages,
+                "blue_decision": f.blue_decision,
+                "admission": f.admission,
             }
             read, calls = catalog_research.research(
                 summary,
                 guidelines,
-                task="recomendar si se aprueba el despliegue de estos PipelineRun",
-                topics=[s for f in facts for s in f.signals][:4] or ["aprobación de despliegues"],
+                task="recomendar si se aprueba el despliegue de este PipelineRun",
+                topics=f.signals[:4] or ["aprobación de despliegues"],
             )
         except Exception as exc:  # noqa: BLE001 - sin consulta, la revisión sigue
             log.warning("el modelo no pudo consultar el catálogo: %s", exc)
@@ -373,19 +373,22 @@ def review(runs: list[PipelineRunSummary], guidelines: Any | None = None) -> dic
     read_names = list(read)
     data = build_input(facts, read)
     verified = verify(_invoke(data, build_schema(facts, read_names)), facts, read_names)
-    verified |= {
+    if not verified["runs"]:
+        raise ValueError("el modelo no revisó la corrida")
+    return verified["runs"][0] | {
+        "overview": verified["overview"],
+        "corrections": verified["corrections"],
         "mcp_calls": calls,
         "model": llm.model_id(),
         "duration_s": round(time.monotonic() - started, 1),
         "input": {"system_prompt": SYSTEM_PROMPT, "data": data},
     }
-    return verified
 
 
 class ReviewCache:
-    """La revisión tarda 1-2 min: se calcula en segundo plano, una a la vez, y se guarda
-    mientras los PipelineRun no cambien. Backstage pregunta y recibe «pending» o el
-    resultado; nunca espera al modelo."""
+    """Revisión por corrida, en segundo plano y en cola (una a la vez). Cada corrida se
+    guarda mientras no cambie; una corrida nueva o que cambió se revisa sola. Backstage
+    pregunta y recibe el estado de cada una; nunca espera al modelo."""
 
     RETRY_AFTER_S = 600
 
@@ -396,41 +399,46 @@ class ReviewCache:
         self._guidelines = guidelines
         self._lock = threading.Lock()
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="review")
-        self._key = ""
-        self._state: dict[str, Any] = {"status": "pending"}
-        self._failed_at = 0.0
+        # corrida -> {"key": estado de la corrida, "state": {"status": ..., ...}, "at": t}
+        self._runs: dict[str, dict[str, Any]] = {}
 
     @staticmethod
-    def key(runs: list[PipelineRunSummary]) -> str:
-        return json.dumps(
-            [(r.name, r.overall, [(s.name, s.status) for s in r.stages]) for r in runs]
-        )
+    def key(run: PipelineRunSummary) -> str:
+        return json.dumps([run.started, run.overall, [(s.name, s.status) for s in run.stages]])
 
     def get(self, runs: list[PipelineRunSummary]) -> dict[str, Any]:
         if not llm.llm_configured():
-            return {"status": "rules-only"}
-        key = self.key(runs)
+            return {"status": "rules-only", "runs": []}
+        out = []
         with self._lock:
-            stale_failure = (
-                self._state.get("status") == "failed"
-                and time.monotonic() - self._failed_at > self.RETRY_AFTER_S
-            )
-            if key != self._key or stale_failure:
-                self._key = key
-                self._state = {"status": "pending"}
-                self._pool.submit(self._compute, key, runs)
-            return dict(self._state)
+            for run in runs:
+                key, entry = self.key(run), self._runs.get(run.name)
+                retry = (
+                    entry is not None
+                    and entry["state"]["status"] == "failed"
+                    and time.monotonic() - entry["at"] > self.RETRY_AFTER_S
+                )
+                if entry is None or entry["key"] != key or retry:
+                    entry = {"key": key, "state": {"status": "pending"}, "at": time.monotonic()}
+                    self._runs[run.name] = entry
+                    self._pool.submit(self._compute, run, key)
+                out.append({"run": run.name, **entry["state"]})
+            for gone in set(self._runs) - {r.name for r in runs}:
+                self._runs.pop(gone)  # corridas que ya no están (borradas o antiguas)
+        status = "pending" if any(r["status"] == "pending" for r in out) else "done"
+        return {"status": status, "runs": out}
 
-    def _compute(self, key: str, runs: list[PipelineRunSummary]) -> None:
+    def _compute(self, run: PipelineRunSummary, key: str) -> None:
         with self._lock:
-            if key != self._key:
-                return  # ya cambiaron los runs: esta revisión no se publicaría
+            entry = self._runs.get(run.name)
+            if entry is None or entry["key"] != key:
+                return  # la corrida cambió o desapareció mientras esperaba su turno
         try:
-            state = {"status": "done", **review(runs, self._guidelines)}
+            state = {"status": "done", **review_run(run, self._guidelines)}
         except Exception as exc:  # noqa: BLE001 - sin modelo, quedan las reglas
-            log.warning("el modelo no pudo revisar los PipelineRun: %s", exc)
+            log.warning("el modelo no pudo revisar %s: %s", run.name, exc)
             state = {"status": "failed", "error": str(exc)[:300]}
-            self._failed_at = time.monotonic()
         with self._lock:
-            if key == self._key:
-                self._state = state
+            entry = self._runs.get(run.name)
+            if entry is not None and entry["key"] == key:
+                entry["state"], entry["at"] = state, time.monotonic()

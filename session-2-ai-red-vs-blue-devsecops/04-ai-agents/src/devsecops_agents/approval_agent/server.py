@@ -117,26 +117,28 @@ def handle(request: dict[str, Any], human_token: str) -> dict[str, Any]:
         }
     if skill == "propose-actions":
         runs = cluster.read_pipelineruns()
-        state = _review_cache().get(runs)
-        if state.get("status") == "done":
-            # Las del modelo, ya verificadas (solo acciones posibles para cada run).
-            proposals = [
-                {
-                    "id": p["id"],
-                    "title": p["action"],
-                    "why": p["why"],
-                    "danger": "alta" if p["action"] == "approve" else "baja",
-                }
-                for r in state["runs"]
-                for p in r["proposals"]
-            ]
-            source = "modelo (verificado)"
-        else:
-            proposals = [p.as_dict() for p in actions.propose_actions(runs)]
-            source = "reglas"
+        reviews = {r["run"]: r for r in _review_cache().get(runs).get("runs", [])}
+        proposals = []
+        for run in runs:
+            reviewed = reviews.get(run.name, {})
+            if reviewed.get("status") == "done":
+                # Las del modelo para esta corrida, ya verificadas (solo acciones posibles).
+                proposals += [
+                    {
+                        "id": p["id"],
+                        "title": p["action"],
+                        "why": p["why"],
+                        "danger": "alta" if p["action"] == "approve" else "baja",
+                        "source": "modelo (verificado)",
+                    }
+                    for p in reviewed["proposals"]
+                ]
+            else:
+                proposals += [
+                    p.as_dict() | {"source": "reglas"} for p in actions.propose_actions([run])
+                ]
         return {
             "proposals": proposals,
-            "source": source,
             "note": "Son propuestas: ninguna se ejecuta sin el token de un humano.",
         }
     if skill == "execute-action":

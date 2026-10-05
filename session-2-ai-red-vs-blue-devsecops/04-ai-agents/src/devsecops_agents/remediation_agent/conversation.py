@@ -17,7 +17,7 @@ import logging
 import re
 import secrets
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -127,6 +127,7 @@ class PendingAction:
     patched: str
     branch: str
     expires_at: float
+    run: str = ""  # PipelineRun cuyo análisis la originó
 
     def public(self, repo: str) -> dict[str, Any]:
         return {
@@ -136,17 +137,44 @@ class PendingAction:
             "recommendation_ids": self.recommendation_ids,
             "diff": self.diff,
             "target": {"repo": repo, "path": self.path, "branch": self.branch},
+            "pipeline_run": self.run,
             "expires_at": datetime.fromtimestamp(self.expires_at, UTC).isoformat(),
         }
+
+
+@dataclass
+class RunState:
+    """Análisis de una corrida: el informe que se muestra y lo necesario para aplicar."""
+
+    report: dict[str, Any]
+    analysis: Analysis
+    containerfile: str
+
+
+MAX_RUNS = 10
+
+
+def for_run(state: State, run: str | None) -> State:
+    """Vista del estado sobre una corrida concreta. Comparte historial, acciones y ramas
+    aplicadas (mismos diccionarios), así que lo que haga el chat queda en el estado real."""
+    chosen = state.runs.get(run or "")
+    if chosen is None:
+        return state
+    return replace(
+        state, report=chosen.report, analysis=chosen.analysis, containerfile=chosen.containerfile
+    )
 
 
 @dataclass
 class State:
     """Lo que el agente recuerda en memoria (un pod, sin estado compartido)."""
 
+    # La corrida en la que se está (la última analizada, o la que eligió la persona).
     report: dict[str, Any] | None = None
     analysis: Analysis | None = None
     containerfile: str = ""
+    # Historial de corridas (las últimas MAX_RUNS), de la más antigua a la más reciente.
+    runs: dict[str, RunState] = field(default_factory=dict)
     history: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
     actions: dict[str, PendingAction] = field(default_factory=dict)
     # Ramas subidas tras una confirmación real, por conversación.
@@ -225,6 +253,7 @@ def _propose(
         patched=rec.fix.patched or "",
         branch=apply.safe_branch(f"{run}-{rec.id}"),
         expires_at=time.time() + ACTION_TTL_S,
+        run=run,
     )
     state.actions[action.id] = action
     reply = (
