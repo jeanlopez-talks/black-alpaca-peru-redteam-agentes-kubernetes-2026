@@ -2,6 +2,8 @@
 
 <div class="meta">
 
+**Seguridad ofensiva sobre un pipeline DevSecOps con agentes de IA**
+
 **Jean Paul López** — Senior Consultant, Red Hat · Lima, Perú
 
 Propuesta para **Black Alpaca 2026** · sesión de 50 min · español · nivel intermedio-avanzado
@@ -10,8 +12,11 @@ Propuesta para **Black Alpaca 2026** · sesión de 50 min · español · nivel i
 
 <div class="repo">
 
-**Laboratorio completo, reproducible y público**
+**Laboratorio DevSecOps completo, reproducible y público**
 `github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026`
+
+Pipeline Tekton de 11 etapas · supply chain con firma y procedencia · políticas de
+admisión · cuatro agentes de IA · portal interno (Backstage). Todo GitOps.
 
 </div>
 
@@ -19,19 +24,27 @@ Propuesta para **Black Alpaca 2026** · sesión de 50 min · español · nivel i
 
 ### 1 · La tesis
 
-Tu pipeline ya tiene agentes de IA revisando PRs y decidiendo gates. Cada uno es una
-**identidad nueva** con acceso a código, credenciales y producción.
+DevSecOps lleva años desplazando los controles hacia la izquierda: escaneo de código,
+SBOM, firma de imágenes, políticas de admisión. Ahora estamos metiendo **agentes de IA**
+en esa misma cadena — revisan PRs, deciden gates, proponen correcciones — y los
+integramos en el portal interno de desarrollo para que el equipo trabaje con ellos.
+
+Cada agente es una **identidad nueva** con acceso al código, a las credenciales del
+pipeline y, en última instancia, a producción. La pregunta ofensiva es directa: ¿qué pasa
+cuando el atacante le habla al agente que cuida tu código?
 
 > **Un control que lee texto escrito por el atacante no es un control de seguridad**,
 > por bueno que sea el modelo que hay detrás. Lo que aguanta es la plataforma.
 
-La charla lo ataca en vivo sobre un laboratorio propio y enseña qué control sí frena a un
-agente que ya tiene credenciales.
+La charla lo ataca en vivo sobre un pipeline DevSecOps propio y enseña qué control sí
+frena a un agente que ya tiene credenciales.
 
 ### 2 · El laboratorio
 
-Pipeline DevSecOps completo sobre un clúster **k3s propio**. Todo GitOps y reproducible.
-Sin nube de terceros y sin servicio externo de IA: el modelo corre dentro del clúster.
+Cadena DevSecOps completa sobre un clúster **k3s propio**: desde que se abre el PR hasta
+que la admisión decide si entra. Todo GitOps y reproducible. Sin nube de terceros y sin
+servicio externo de IA — el modelo corre dentro del clúster, así que ningún fragmento de
+código sale de la infraestructura.
 
 | Pieza | Qué es |
 |---|---|
@@ -40,7 +53,7 @@ Sin nube de terceros y sin servicio externo de IA: el modelo corre dentro del cl
 | **Admisión** | Kyverno: exige firma válida **y** aprobación humana **y** que el cambio venga de Argo CD |
 | **Agentes** | Cuatro, comunicados por A2A: atacante, revisor, remediación y aprobación |
 | **Modelo** | Qwen3-8B servido con vLLM **dentro del clúster**: sin salida a internet y sin API key |
-| **Portal** | Backstage: donde la persona ve lo que proponen los agentes y lo confirma |
+| **Portal interno (IDP)** | Backstage: donde los agentes publican su análisis y la persona confirma. Es la puerta por la que el equipo trabaja con ellos |
 
 ### 3 · Arquitectura
 
@@ -100,8 +113,10 @@ El patrón que propongo para usar un modelo dentro de un pipeline sin confiar en
 **Resultado medido:** la imagen baja de **37 a 13 vulnerabilidades graves**, con la
 aplicación funcionando — configuración válida y respuesta HTTP 200 — verificado reescaneando.
 
-Y la frontera que importa: el agente **propone**, una persona **confirma** en Backstage y el
-cambio se escribe en Git para que lo aplique Argo CD. **El agente nunca toca el clúster.**
+Y la frontera que importa, que es donde entra el **portal interno de desarrollo**: el
+agente publica su análisis en Backstage con todo lo que usó para decidir, una persona lo
+revisa y **confirma**, y solo entonces el cambio se escribe en Git para que lo aplique
+Argo CD. **El agente propone; nunca toca el clúster.**
 
 ---
 
@@ -120,11 +135,12 @@ cambio se escribe en Git para que lo aplique Argo CD. **El agente nunca toca el 
 
 ### 8 · Qué se lleva quien asiste
 
-- Cómo se envenena un gate que lee texto escrito por el atacante.
+- Cómo se envenena un gate de IA que lee texto escrito por el atacante.
 - Por qué firmar y escanear son **necesarios y no suficientes**: la cadena de supply chain
   puede estar intacta mientras el ataque sigue vivo.
-- Qué control sí frena a un agente que ya tiene credenciales.
-- Un laboratorio **reproducible en GitOps** para probarlo en su propia infraestructura.
+- Dónde poner la frontera cuando se integran agentes en el pipeline y en el **portal
+  interno de desarrollo**: qué pueden proponer y qué solo puede confirmar una persona.
+- Un pipeline DevSecOps **reproducible en GitOps** para probarlo en su propia infraestructura.
 
 ### 9 · Honestidad sobre el alcance
 
@@ -142,7 +158,11 @@ cambio se escribe en Git para que lo aplique Argo CD. **El agente nunca toca el 
 **Todo el material de esta propuesta es público**
 `github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026`
 
-Manifiestos GitOps del pipeline y las políticas · código de los cuatro agentes ·
-diagrama interactivo · diapositivas · evidencias de cada medición.
+El pipeline DevSecOps y las políticas de admisión como manifiestos GitOps · el código de
+los cuatro agentes · el plugin del portal interno · el diagrama interactivo · las
+diapositivas · las evidencias de cada medición.
+
+*El repositorio reúne las dos propuestas de esta edición; el material de esta sesión está
+en `session-2-ai-red-vs-blue-devsecops/`.*
 
 </div>

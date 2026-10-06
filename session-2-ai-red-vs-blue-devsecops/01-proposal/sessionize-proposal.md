@@ -19,7 +19,7 @@ Tu agente de IA es un insider: cómo atacarlo y qué control lo frena de verdad
 
 ### Description — *privada, para el comité*
 ```
-Las empresas están metiendo agentes de IA en sus pipelines: revisores de PRs, gates de seguridad, asistentes que proponen correcciones. Cada uno es una identidad nueva con acceso a código, credenciales y producción, y casi nadie lo gobierna como tal. Esta charla lo ataca en vivo sobre un laboratorio propio y muestra qué control es el que de verdad aguanta.
+Las empresas están metiendo agentes de IA dentro de su cadena DevSecOps: revisores de PRs, gates de seguridad, asistentes que proponen correcciones; y los integran en su portal interno de desarrollo (IDP) para que el equipo trabaje con ellos. Cada agente es una identidad nueva con acceso a código, credenciales y producción, y casi nadie lo gobierna como tal. Esta charla lo ataca en vivo sobre un pipeline DevSecOps propio y muestra qué control es el que de verdad aguanta.
 
 Parte ofensiva, sobre un pipeline DevSecOps real en Kubernetes (Tekton, Argo CD, Kyverno, cosign, registro interno) con agentes que hablan por A2A. Un agente rojo abre PRs maliciosos contra un agente azul que los revisa. El azul bloquea el ataque obvio. Después el rojo esconde una instrucción en el diff y gana el gate. La cadena de supply chain sigue intacta: la imagen se firma y se verifica correctamente, porque el PR toca la CONFIGURACIÓN, no la imagen. Firma válida, ataque vivo.
 
@@ -27,20 +27,22 @@ El giro es lo que NO funcionó. Con el modelo real (Qwen3-8B local) el revisor b
 
 Lo que sí frena el ataque es la plataforma. El agente tiene credencial real y aun así la admisión lo rechaza dos veces: sin aprobación humana, y falsificándola tampoco, porque el cambio no viene de GitOps. Cierro con los dos agentes que sí aportan: analizan vulnerabilidades con el modelo acotado por un esquema y verificado por código (37 → 13 vulnerabilidades graves, con la app funcionando), y proponen el arreglo para que una persona lo confirme en Backstage.
 
-Todo corre en un clúster k3s propio, es GitOps y reproducible, y se publica con la charla. La metodología de aislamiento parte del trabajo de Roy Belio (Red Hat), citado como fuente.
+Todo corre en un clúster k3s propio, es GitOps y reproducible, y ya está publicado: github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026 — el material de esta sesión está en la carpeta session-2-ai-red-vs-blue-devsecops/ (manifiestos del pipeline y de las políticas de admisión, código de los cuatro agentes, el plugin del portal interno, el diagrama de arquitectura y la evidencia de cada medición). La metodología de aislamiento parte del trabajo de Roy Belio (Red Hat), citado como fuente.
 ```
 
 ### Abstract — *público, ≤300 palabras*
 ```
-Tu pipeline ya tiene agentes de IA: revisan PRs, deciden gates, proponen correcciones. Cada uno es una identidad con acceso a tu código y a producción. La pregunta ofensiva es obvia: ¿qué pasa cuando el atacante le habla al agente?
+DevSecOps lleva años moviendo controles hacia la izquierda: escaneo, SBOM, firma, admisión. Ahora metemos agentes de IA en esa cadena y los integramos en el portal interno de desarrollo. Cada uno es una identidad nueva con acceso a tu código y a producción. ¿Qué pasa cuando el atacante le habla al agente que cuida tu código?
 
-Lo muestro en vivo sobre un pipeline DevSecOps real en Kubernetes con agentes que se comunican por A2A. Un agente rojo abre pull requests maliciosos y un agente azul los revisa. El azul bloquea el ataque obvio. Luego el rojo esconde una instrucción en el diff y gana el gate — y la cadena de supply chain no se entera: la imagen se firma y verifica correctamente, porque el ataque toca la configuración, no la imagen. Firma válida, ataque vivo.
+Lo muestro en vivo sobre un pipeline DevSecOps real en Kubernetes. Un agente rojo abre pull requests maliciosos y un agente azul los revisa. El azul bloquea el ataque obvio. Luego el rojo esconde una instrucción en el diff y gana el gate — y la supply chain no se entera: la imagen se firma y verifica bien, porque el ataque toca la configuración, no la imagen.
 
-Después enseño lo que NO funcionó. Con el modelo real en mi clúster, el revisor bloqueó las cinco ejecuciones: ve el comando peligroso. El engaño solo ocurre con reglas fijas, donde obedecer la nota está programado. Ese es el punto: un modelo mejor sube el listón, pero no es un control.
+Después enseño lo que NO funcionó: con el modelo real, el revisor bloqueó las cinco ejecuciones. El engaño solo ocurre con reglas fijas, donde obedecer la nota está programado. Ese es el punto: un modelo mejor sube el listón, pero no es un control.
 
-Lo que de verdad frena el ataque es la plataforma. El agente tiene credencial y aun así la admisión lo rechaza dos veces: le falta la aprobación de una persona, y cuando se la falsifica tampoco entra, porque el cambio no viene de Git. Cierro con los agentes que sí aportan valor: analizan las vulnerabilidades con el modelo acotado por un esquema y verificado por código, bajan la imagen de 37 a 13 vulnerabilidades graves, y proponen el arreglo para que una persona lo confirme.
+Lo que frena el ataque es la plataforma. El agente tiene credencial y aun así la admisión lo rechaza dos veces: falta la aprobación de una persona, y al falsificarla tampoco entra, porque el cambio no viene de Git. Cierro con los agentes que sí aportan: analizan las vulnerabilidades con el modelo acotado por un esquema y verificado por código, bajan la imagen de 37 a 13 graves, y publican el arreglo en el portal para que una persona lo confirme.
 
-Te llevas: cómo se envenena un gate que lee texto del atacante, por qué firmar y escanear son necesarios pero no suficientes, y un laboratorio reproducible en GitOps para gobernar agentes en tu pipeline.
+Te llevas: cómo se envenena un gate de IA, por qué firmar y escanear no bastan, y dónde poner la frontera entre lo que un agente propone y lo que solo una persona confirma.
+
+Laboratorio público y reproducible: github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026
 
 Nivel intermedio-avanzado. Se asume CI/CD y Kubernetes.
 ```

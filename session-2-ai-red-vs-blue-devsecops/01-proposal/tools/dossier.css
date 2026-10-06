@@ -2,7 +2,7 @@
    Tipografía oficial de Red Hat: Display para titulares, Text para el cuerpo y
    Mono para rutas y código. Las tres están instaladas en el sistema. */
 
-@page { size: A4; margin: 15mm 16mm 13mm; }
+@page { size: A4; margin: 13mm 15mm 12mm; }
 
 :root{
   --rh-red:#ee0000;        /* rojo corporativo, solo como acento */
@@ -15,7 +15,7 @@
 
 body{
   font-family:"Red Hat Text","Red Hat Display",-apple-system,sans-serif;
-  font-size:9.7pt; line-height:1.5; color:var(--ink);
+  font-size:9.4pt; line-height:1.45; color:var(--ink);
   margin:0; max-width:none;
   -webkit-font-smoothing:antialiased;
 }
@@ -36,11 +36,11 @@ p{margin:0 0 7pt}
 hr{border:0; border-top:1px solid var(--rule); margin:11pt 0}
 
 /* --- Tablas ------------------------------------------------------------ */
-table{border-collapse:collapse; width:100%; font-size:8.7pt; margin:7pt 0}
+table{border-collapse:collapse; width:100%; font-size:8.4pt; margin:6pt 0}
 th{font-family:"Red Hat Display",sans-serif; font-weight:700;
    background:var(--surface); text-align:left;
    padding:5pt 8pt; border:1px solid var(--rule)}
-td{padding:4.5pt 8pt; border:1px solid var(--rule); vertical-align:top}
+td{padding:4pt 7pt; border:1px solid var(--rule); vertical-align:top}
 tbody tr:nth-child(even){background:#fafafa}
 
 /* --- Código y rutas: Red Hat Mono -------------------------------------- */
@@ -79,7 +79,9 @@ p > em:only-child{display:block; font-size:8.5pt; text-align:center;
   margin-top:3pt}
 
 /* Nada de títulos, tablas o citas partidos entre páginas */
-h3,h4,table,blockquote{break-inside:avoid}
+h3,h4,blockquote,table{break-inside:avoid}
+thead{display:table-header-group}
+tr{break-inside:avoid}
 h3,h4{break-after:avoid}
 
 /* Bloque de autoría bajo el titular */
@@ -98,3 +100,7 @@ table th:first-child, table td:first-child{width:21%}
 .repo strong{font-family:"Red Hat Display",sans-serif; display:block;
   margin-bottom:2pt; color:var(--ink)}
 .repo code{background:transparent; padding:0; font-size:9pt; color:var(--accent)}
+
+/* La primera línea de la cabecera: el tema de la charla, destacado. */
+.meta p:first-child strong{font-family:"Red Hat Display",sans-serif;
+  font-size:10pt; color:var(--ink)}
