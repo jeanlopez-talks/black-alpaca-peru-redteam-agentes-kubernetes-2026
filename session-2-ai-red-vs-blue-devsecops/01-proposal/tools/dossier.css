@@ -1,44 +1,92 @@
-/* Hoja de estilo del dossier impreso: sobria, legible y con el diagrama
-   apaisado ocupando el ancho completo de la página. */
-@page { size: A4; }
-body{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;font-size:10.5pt;
-  line-height:1.5;color:#14181d;max-width:none;margin:0}
-h1{font-size:19pt;margin:0 0 2pt;letter-spacing:-.3px;color:#0d1117}
-h2{font-size:12.5pt;font-weight:500;color:#44505e;margin:0 0 10pt;
-  border:0;padding:0}
-h3{font-size:11.5pt;margin:15pt 0 5pt;color:#0d1117;
-  border-bottom:1px solid #d7dde4;padding-bottom:3pt}
+/* Hoja de estilo del dossier que se adjunta al CFP.
+   Tipografía oficial de Red Hat: Display para titulares, Text para el cuerpo y
+   Mono para rutas y código. Las tres están instaladas en el sistema. */
+
+@page { size: A4; margin: 17mm 16mm 15mm; }
+
+:root{
+  --rh-red:#ee0000;        /* rojo corporativo, solo como acento */
+  --ink:#151515;
+  --ink-soft:#4d5258;
+  --rule:#d2d2d2;
+  --surface:#f5f5f5;
+  --accent:#06c;
+}
+
+body{
+  font-family:"Red Hat Text","Red Hat Display",-apple-system,sans-serif;
+  font-size:10pt; line-height:1.55; color:var(--ink);
+  margin:0; max-width:none;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* --- Titulares: Red Hat Display ---------------------------------------- */
+h1,h2,h3,h4{font-family:"Red Hat Display","Red Hat Text",sans-serif;
+  font-weight:700; letter-spacing:-.2px; color:var(--ink)}
+
+h1{font-size:23pt; line-height:1.15; margin:0 0 3pt;
+   border-bottom:3px solid var(--rh-red); padding-bottom:7pt}
+h2{font-size:12.5pt; font-weight:500; color:var(--ink-soft);
+   margin:7pt 0 13pt; border:0; padding:0; letter-spacing:0}
+h3{font-size:12pt; margin:17pt 0 6pt; padding-bottom:4pt;
+   border-bottom:1px solid var(--rule)}
+h4{font-size:10.5pt; margin:12pt 0 4pt}
+
 p{margin:0 0 7pt}
-hr{border:0;border-top:1px solid #d7dde4;margin:12pt 0}
-table{border-collapse:collapse;width:100%;font-size:9.5pt;margin:7pt 0}
-th{background:#eef2f6;text-align:left;padding:5pt 7pt;border:1px solid #d7dde4;
-  font-weight:650}
-td{padding:5pt 7pt;border:1px solid #d7dde4;vertical-align:top}
-code{background:#eef2f6;padding:1px 4px;border-radius:3px;
-  font-family:ui-monospace,Menlo,monospace;font-size:9pt}
-blockquote{margin:9pt 0;padding:7pt 12pt;background:#f4f7fa;
-  border-left:3px solid #4a7fb5;color:#243140;font-style:normal}
+hr{border:0; border-top:1px solid var(--rule); margin:14pt 0}
+
+/* --- Tablas ------------------------------------------------------------ */
+table{border-collapse:collapse; width:100%; font-size:9pt; margin:9pt 0}
+th{font-family:"Red Hat Display",sans-serif; font-weight:700;
+   background:var(--surface); text-align:left;
+   padding:6pt 8pt; border:1px solid var(--rule)}
+td{padding:6pt 8pt; border:1px solid var(--rule); vertical-align:top}
+tbody tr:nth-child(even){background:#fafafa}
+
+/* --- Código y rutas: Red Hat Mono -------------------------------------- */
+code{font-family:"Red Hat Mono",ui-monospace,monospace; font-size:8.5pt;
+  background:var(--surface); padding:1px 4px; border-radius:3px;
+  color:#3c3f42}
+
+/* --- Citas: las frases que deben quedarse ------------------------------ */
+blockquote{margin:10pt 0; padding:9pt 13pt; background:#fdf4f4;
+  border-left:3px solid var(--rh-red); color:var(--ink)}
 blockquote p{margin:0 0 4pt}
 blockquote p:last-child{margin:0}
-ul,ol{margin:0 0 7pt;padding-left:18pt}
-li{margin-bottom:3pt}
-strong{color:#0d1117}
-/* El diagrama: ancho completo y sin cortarse entre páginas. */
-img{width:100%;height:auto;display:block;margin:8pt 0 4pt;
-  border:1px solid #d0d7de;border-radius:4px;break-inside:avoid}
-img + em, p > em{display:block;font-size:8.5pt;color:#5c6773;text-align:center;
-  margin-top:2pt}
-h3, table, blockquote{break-inside:avoid}
+blockquote strong{font-family:"Red Hat Display",sans-serif}
 
-/* Quita el título que inyecta pandoc desde los metadatos: el documento ya
-   trae el suyo propio como H1. */
+ul,ol{margin:0 0 8pt; padding-left:17pt}
+li{margin-bottom:4pt}
+li::marker{color:var(--ink-soft)}
+strong{font-weight:700}
+
+/* pandoc inyecta su propio bloque de título; el documento ya trae el suyo. */
 header#title-block-header{display:none}
 
-/* El diagrama es muy apaisado (2.5:1): se le da una página A4 HORIZONTAL
-   propia, para que se lea sin girar la hoja ni encogerlo. */
-@page diagrama { size: A4 landscape; margin: 0.4in; }
-.diagram-page{page:diagrama;break-before:page;break-after:page;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  height:7.1in;margin:0}
-.diagram-page img{width:100%;max-width:10.3in;height:auto;
-  border:1px solid #d0d7de;border-radius:4px;margin:0}
+/* --- El diagrama -------------------------------------------------------
+   Es muy apaisado (2.5:1): se le da una página A4 HORIZONTAL propia para que
+   se lea sin girar la hoja ni encogerlo hasta hacerlo ilegible. */
+@page diagrama { size: A4 landscape; margin: 11mm; }
+.diagram-page{page:diagrama; break-before:page; break-after:page;
+  display:flex; align-items:center; justify-content:center;
+  height:7.1in; margin:0}
+.diagram-page img{width:100%; max-width:10.4in; height:auto;
+  border:1px solid #8a8d90; border-radius:3px}
+
+/* Pie de la imagen y notas en cursiva */
+em{color:var(--ink-soft)}
+p > em:only-child{display:block; font-size:8.5pt; text-align:center;
+  margin-top:3pt}
+
+/* Nada de títulos, tablas o citas partidos entre páginas */
+h3,h4,table,blockquote{break-inside:avoid}
+h3,h4{break-after:avoid}
+
+/* Bloque de autoría bajo el titular */
+.meta{margin:0 0 4pt}
+.meta p{margin:0 0 2pt; font-size:9.5pt; color:var(--ink-soft)}
+.meta strong{color:var(--ink)}
+
+/* Primera columna estrecha en las tablas de clave/valor: con el ancho por
+   defecto se llevaba media página y el contenido quedaba comprimido. */
+table th:first-child, table td:first-child{width:21%}
