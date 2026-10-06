@@ -873,6 +873,28 @@ agentBox('remediation', underStage('remediation'), 600, AG_W, 84, '#1d1630', '#5
 // aprobación: no cuelga de una etapa, observa todas las corridas
 agentBox('approval', underStage('verify'), 600, AG_W, 84, '#1d1630', '#5b4387');
 
+/* --- BACKSTAGE: donde la persona ve y decide ----------------------------
+   Sin esto el diagrama dejaba el ciclo abierto: el agente proponía y no se
+   veía dónde alguien lo aprueba ni cómo vuelve el arreglo a Git.          */
+{
+  const bx = BAND_X + 24, by = 600, bw = 290, bh = 84;
+  const g = gNodes.append('g').attr('class','node lit')
+    .attr('data-id','backstage').style('cursor','pointer');
+
+  g.append('rect').attr('x',bx).attr('y',by).attr('width',bw).attr('height',bh)
+    .attr('rx',9).attr('fill','#10212a').attr('stroke','#2f7f8c').attr('stroke-width',1.8);
+  g.append('text').attr('x',bx+12).attr('y',by+22).attr('fill','#e6edf3')
+    .attr('font-size',12.5).attr('font-weight',650).text('Backstage · el portal');
+  g.append('text').attr('x',bx+12).attr('y',by+40).attr('fill','#9aa7b4')
+    .attr('font-size',10.5).attr('font-family','ui-monospace,Menlo,monospace')
+    .text('aquí entra la persona');
+  const bt = g.append('text').attr('x',bx+12).attr('y',by+58).attr('fill','#aab8c6')
+    .attr('font-size',11);
+  bt.text('Lee lo que proponen los agentes y confirma, o no, cada arreglo.');
+  wrap(bt, bw-24, 13);
+  g.on('click',()=>showBackstage());
+}
+
 /* --- enlaces de dependencia --------------------------------------------
    DECISIÓN DE DISEÑO: estos enlaces NO se dibujan por defecto.
 
@@ -934,6 +956,17 @@ link(`M${scx_('sign')},${PIPE_Y+BOX_H}V${PIPE_Y+BOX_H+128}H${platX[0]+180}V158`,
 link(`M${scx_('deploy-gitops')},${PIPE_Y}V250H${platX[3]+137}V158`, '#d29922','aamber',null,
   ['deploy-gitops','kyverno'], {x:scx_('deploy-gitops')+10, y:244, t:'RECHAZADO ×2', bold:true});
 
+// --- EL CICLO COMPLETO: agente → Backstage → persona → Git → Argo CD ----
+// Los dos agentes publican su informe en Backstage.
+link(`M${underStage('remediation')},642H${BAND_X+314}`, '#bc8cff','apurple','4 3',
+  ['remediation','backstage'], {x:BAND_X+330, y:636, t:'los agentes publican aquí su informe'});
+link(`M${underStage('verify')},660H${BAND_X+314}`, '#bc8cff','apurple','4 3',
+  ['approval','backstage']);
+
+// Backstage → Git: lo que la persona confirma se escribe como cambio en Git.
+link(`M${BAND_X+169},684V742`, '#3fb950','agreen',null,
+  ['backstage','argocd'], {x:BAND_X+180, y:716, t:'la persona confirma → el cambio va a Git', bold:true});
+
 // Argo CD gobierna el pipeline y los agentes
 link(`M${PIPE_X+188},776V730H${scx_('sbom')}V${PIPE_Y+BOX_H}`, '#3fb950','agreen','4 3',
   ['argocd']);
@@ -973,6 +1006,40 @@ function intro(){
     <b>tiene credencial</b>. Y no entra: lo frena la <b>admisión</b>, no el modelo.</div>
     <p class="hint">Clic en cualquier caja para el detalle.</p>
   `);
+}
+
+function showBackstage(){
+  d3.selectAll('.stage').classed('sel',false);
+  panel.html(`
+    <h2 style="color:#5fc9d6">Backstage · el portal</h2>
+    <div><span class="tag">aquí decide la persona</span></div>
+
+    <p class="lead">El sitio donde alguien ve lo que proponen los agentes
+    y decide si se aplica o no.</p>
+
+    <h3>El ciclo completo</h3>
+    <ul>
+      <li>El agente analiza y <b>propone</b> un arreglo</li>
+      <li>Lo publica aquí, con todo lo que usó para decidirlo</li>
+      <li>Una <b>persona</b> lo lee y confirma, o no</li>
+      <li>Si confirma, el cambio se escribe <b>en Git</b> como una rama nueva</li>
+      <li>Argo CD lo aplica al clúster — nunca el agente</li>
+    </ul>
+
+    <div class="note">Esta es la frontera que de verdad importa:
+    el agente <b>nunca</b> toca el clúster. Propone, y una persona decide.</div>
+
+    <h3>Qué se ve aquí</h3>
+    <ul>
+      <li>La imagen analizada y cada vulnerabilidad, una por una</li>
+      <li>Qué propone el modelo y en qué hechos se basó</li>
+      <li>Cada vez que el código tuvo que corregir al modelo</li>
+      <li>El veredicto del segundo agente sobre cada ejecución</li>
+    </ul>
+    <p class="hint">Verificado de punta a punta: «aplica R2» creó una rama con
+    solo las 6 líneas del arreglo, nunca directamente en la rama principal.</p>
+  `);
+  dimAllBut(['backstage','remediation','approval','argocd']);
 }
 
 function showStart(){
@@ -1195,6 +1262,7 @@ selectStage = _openOnDetail(selectStage);
 showAgent   = _openOnDetail(showAgent);
 showPlatform= _openOnDetail(showPlatform);
 showStart   = _openOnDetail(showStart);
+showBackstage = _openOnDetail(showBackstage);
 
 setPanel(false);   // arranca plegado: primero el mapa completo
 showAll();   // y sin dependencias: el detalle, bajo demanda
