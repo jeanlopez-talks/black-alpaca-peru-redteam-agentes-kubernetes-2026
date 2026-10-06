@@ -3,6 +3,7 @@
 # PDFs de trabajo, salvo el one-pager que se adjunta al CFP
 *.pdf
 !session-1-ai-agent-isolation/01-proposal/one-pager.pdf
+!session-2-ai-red-vs-blue-devsecops/01-proposal/dossier-session-2.pdf
 
 # Python
 **/.venv/

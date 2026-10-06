@@ -9,41 +9,45 @@
 
 ### Session Title — *máx 100 caracteres*
 ```
-Tu agente de IA es un insider: cómo atacarlo y cómo gobernarlo en tu pipeline DevSecOps
+Engañé al gate de IA de tu pipeline: la firma seguía siendo válida y aun así no entró
 ```
 
 Variante:
 ```
-Engañé a tu IA defensiva y a ti con ella: atacar y gobernar agentes en DevSecOps
+Tu agente de IA es un insider: cómo atacarlo y qué control lo frena de verdad
 ```
 
 ### Description — *privada, para el comité*
 ```
-Las empresas están metiendo agentes de IA en sus pipelines: revisores de PRs, gates de seguridad, asistentes que resumen y proponen despliegues. Cada uno es una identidad nueva con acceso a código, credenciales y producción, y casi nadie lo gobierna como tal. Esta charla lo ataca en vivo y luego muestra cómo se gobierna.
+Las empresas están metiendo agentes de IA en sus pipelines: revisores de PRs, gates de seguridad, asistentes que proponen correcciones. Cada uno es una identidad nueva con acceso a código, credenciales y producción, y casi nadie lo gobierna como tal. Esta charla lo ataca en vivo sobre un laboratorio propio y muestra qué control es el que de verdad aguanta.
 
-Parte ofensiva, sobre un pipeline real en Kubernetes (Tekton, Argo CD, Kyverno, cosign) con agentes que hablan por A2A. Un agente rojo abre PRs maliciosos contra un agente azul que los revisa. Primero el azul bloquea el ataque obvio. Después el rojo reencuadra el payload y el clasificador de prompt injection se desploma de 0.999999 a 0.0005 (medido por mí), e inyecta en el diff una instrucción para el revisor: el azul aprueba su propio ataque. El giro final: un tercer agente que asiste al humano en Backstage resume ese PR envenenado y le transmite la mentira, así que el "humano en el loop" también cae.
+Parte ofensiva, sobre un pipeline DevSecOps real en Kubernetes (Tekton, Argo CD, Kyverno, cosign, registro interno) con agentes que hablan por A2A. Un agente rojo abre PRs maliciosos contra un agente azul que los revisa. El azul bloquea el ataque obvio. Después el rojo esconde una instrucción en el diff y gana el gate. La cadena de supply chain sigue intacta: la imagen se firma y se verifica correctamente, porque el PR toca la CONFIGURACIÓN, no la imagen. Firma válida, ataque vivo.
 
-Parte defensiva: lo que aguanta no es un mejor prompt ni un humano mirando, sino gobernar a cada agente como una identidad de primera clase desde la plataforma. Cada agente corre en su propio sandbox sin token de API, con imagen firmada y verificada en admisión. Actúa con credenciales de vida corta, delegadas con token exchange (RFC 8693), y con permisos por tarea y por skill que decide OpenFGA detrás de un gateway de agentes. El atacante sigue entrando al agente, pero no tiene a dónde ir.
+El giro es lo que NO funcionó. Con el modelo real (Qwen3-8B local) el revisor bloqueó las 5 ejecuciones: ve el comando peligroso. El engaño solo ocurre con el motor de reglas, donde obedecer la nota está programado a propósito. Lo presento tal cual, porque es el punto: un modelo mejor sube el listón, no lo convierte en un control de seguridad.
 
-El laboratorio del duelo y la supply chain ya corre de punta a punta en un clúster k3s propio, con resultados medidos. Todo es GitOps y reproducible, y se publicará con la charla. La metodología de aislamiento parte del trabajo de Roy Belio (Red Hat), citado como fuente.
+Lo que sí frena el ataque es la plataforma. El agente tiene credencial real y aun así la admisión lo rechaza dos veces: sin aprobación humana, y falsificándola tampoco, porque el cambio no viene de GitOps. Cierro con los dos agentes que sí aportan: analizan vulnerabilidades con el modelo acotado por un esquema y verificado por código (37 → 13 vulnerabilidades graves, con la app funcionando), y proponen el arreglo para que una persona lo confirme en Backstage.
+
+Todo corre en un clúster k3s propio, es GitOps y reproducible, y se publica con la charla. La metodología de aislamiento parte del trabajo de Roy Belio (Red Hat), citado como fuente.
 ```
 
 ### Abstract — *público, ≤300 palabras*
 ```
-Tu pipeline ya tiene agentes de IA: revisan PRs, deciden gates, resumen despliegues. Cada uno es una identidad con acceso a tu código y a producción. La pregunta ofensiva es obvia: ¿qué pasa cuando el atacante le habla al agente?
+Tu pipeline ya tiene agentes de IA: revisan PRs, deciden gates, proponen correcciones. Cada uno es una identidad con acceso a tu código y a producción. La pregunta ofensiva es obvia: ¿qué pasa cuando el atacante le habla al agente?
 
-Lo muestro en vivo sobre un pipeline real en Kubernetes con agentes que se comunican por A2A. Un agente rojo abre pull requests maliciosos y un agente azul los revisa. Primero el azul gana. Después el rojo reencuadra el payload, el clasificador de prompt injection cae de 0.999999 a 0.0005 (números propios) y una instrucción escondida en el diff convence al revisor de aprobar su propio ataque. El cierre del ataque: el agente que asiste al humano le resume ese PR como "pre-aprobado por seguridad", y el humano en el loop también firma.
+Lo muestro en vivo sobre un pipeline DevSecOps real en Kubernetes con agentes que se comunican por A2A. Un agente rojo abre pull requests maliciosos y un agente azul los revisa. El azul bloquea el ataque obvio. Luego el rojo esconde una instrucción en el diff y gana el gate — y la cadena de supply chain no se entera: la imagen se firma y verifica correctamente, porque el ataque toca la configuración, no la imagen. Firma válida, ataque vivo.
 
-La segunda mitad responde qué aguanta, y no es un mejor prompt. Es gobernar a cada agente como una identidad de primera clase desde la plataforma: sandbox propio sin token de API, imagen firmada y verificada en admisión, credenciales de vida corta delegadas con token exchange (RFC 8693) y permisos por tarea y por skill decididos por OpenFGA detrás de un gateway de agentes. El atacante sigue convenciendo al agente, pero el agente ya no tiene a dónde ir.
+Después enseño lo que NO funcionó. Con el modelo real en mi clúster, el revisor bloqueó las cinco ejecuciones: ve el comando peligroso. El engaño solo ocurre con reglas fijas, donde obedecer la nota está programado. Ese es el punto: un modelo mejor sube el listón, pero no es un control.
 
-Te llevas: cómo se envenena una cadena de agentes y al humano que confía en ellos, por qué los controles que leen texto del atacante son atacables, y un blueprint reproducible en GitOps para gobernar agentes en tu pipeline.
+Lo que de verdad frena el ataque es la plataforma. El agente tiene credencial y aun así la admisión lo rechaza dos veces: le falta la aprobación de una persona, y cuando se la falsifica tampoco entra, porque el cambio no viene de Git. Cierro con los agentes que sí aportan valor: analizan las vulnerabilidades con el modelo acotado por un esquema y verificado por código, bajan la imagen de 37 a 13 vulnerabilidades graves, y proponen el arreglo para que una persona lo confirme.
+
+Te llevas: cómo se envenena un gate que lee texto del atacante, por qué firmar y escanear son necesarios pero no suficientes, y un laboratorio reproducible en GitOps para gobernar agentes en tu pipeline.
 
 Nivel intermedio-avanzado. Se asume CI/CD y Kubernetes.
 ```
 
 ### Talk Teaser — *≤240 caracteres*
 ```
-Tu revisor de PRs es una IA. Mi agente rojo lo convence de aprobar su propio ataque, y el asistente del humano le jura que es seguro. Luego lo gobierno: sandbox, identidad propia y permisos por tarea. Demo en vivo.
+Mi agente rojo convence a tu revisor de IA de aprobar su propio ataque, y la firma de la imagen sigue siendo válida. Lo que lo frena no es el modelo: es la admisión. Laboratorio propio, resultados medidos.
 ```
 
 ### Session format
@@ -67,20 +71,22 @@ Español
 ```
 
 ### Supporting Files
-> El one-pager PDF de la propuesta, con enlace al repositorio del laboratorio.
+> `dossier-session-2.pdf` — resumen técnico con el diagrama de arquitectura del
+> pipeline y los agentes, los cuatro actos con su resultado real, los números
+> medidos y el enlace al repositorio con el laboratorio completo.
 
 ---
 
 ## Esqueleto (50 min)
 
-1. **(0-5)** Los agentes ya están en tu pipeline: cada uno es una identidad nueva.
-2. **(5-10)** El escenario: pipeline DevSecOps real (Tekton, Argo CD, Kyverno, cosign) y tres agentes que hablan por A2A.
-3. **(10-15)** Acto 1: el azul gana y bloquea el ataque obvio.
-4. **(15-22)** Acto 2: evasión del clasificador (0.999999 → 0.0005) e inyección indirecta en el diff. El azul aprueba.
-5. **(22-27)** Acto 3: la firma es válida y no ayuda, porque el ataque toca config, no la imagen.
-6. **(27-32)** Acto 4: el asistente del humano en Backstage le resume la mentira y el humano aprueba.
-7. **(32-45)** Gobernar agentes en vivo: sandbox e imagen firmada, identidad propia, token exchange (RFC 8693), permisos por tarea con OpenFGA detrás del gateway. El mismo ataque, ahora sin a dónde ir.
-8. **(45-50)** Checklist para gobernar los agentes de tu pipeline. Preguntas.
+1. **(0-5)** Los agentes ya están en tu pipeline: cada uno es una identidad nueva con acceso a código y a producción.
+2. **(5-12)** El escenario, en mi clúster: pipeline DevSecOps de 11 etapas (clone, pruebas, SAST, build, SBOM, escaneo, firma, procedencia, gate, verificación, despliegue) y los agentes que actúan en él.
+3. **(12-18)** Acto 1: el azul bloquea el PR malicioso obvio. El control funciona cuando el ataque es evidente.
+4. **(18-26)** Acto 2 y 3: el rojo esconde la instrucción en el diff y gana el gate. La firma se verifica igual, porque el ataque toca config y no la imagen — supply chain intacta, ataque vivo.
+5. **(26-32)** El hallazgo incómodo: con el modelo real el azul bloqueó 5 de 5. El engaño solo ocurre donde obedecer la nota está programado. Un modelo mejor sube el listón; no es un control.
+6. **(32-40)** Lo que sí frena: la admisión. El agente tiene credencial y es rechazado dos veces — sin aprobación humana, y falsificándola tampoco, porque no viene de GitOps.
+7. **(40-47)** Los agentes que sí aportan: el modelo decide, el esquema acota, el código verifica. 37 → 13 vulnerabilidades graves. El agente propone y la persona confirma en Backstage.
+8. **(47-50)** Checklist para gobernar los agentes de tu pipeline. Preguntas.
 
 ---
 

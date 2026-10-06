@@ -686,6 +686,14 @@ function route(a, b, opts){
   return 'M' + x1 + ',' + y1 + 'H' + lx + 'V' + y2 + 'H' + x2;
 }
 
+/* Mide el ancho real de un texto con la tipografía del diagrama. Estimar por
+   número de caracteres daba cajas apretadas o con hueco de sobra. */
+const _mc = document.createElement('canvas').getContext('2d');
+function textW(txt, size, weight){
+  _mc.font = `${weight||400} ${size}px -apple-system, "Segoe UI", Roboto, sans-serif`;
+  return _mc.measureText(txt).width;
+}
+
 const gBands  = svg.append('g');
 const gLinks  = svg.append('g');
 const gNodes  = svg.append('g');
@@ -737,8 +745,15 @@ band(BAND_X, 742, PIPE_W, 182,
   'solo entra lo que está escrito en Git y aprueba una persona');
 
 /* --- plataforma (fila superior) ---------------------------------------- */
-const platX = [PIPE_X+6, PIPE_X+282, PIPE_X+558, PIPE_X+858, PIPE_X+1140];
-const platW = [250, 250, 274, 274, 300];
+// El ancho de cada caja se deriva de SU texto (antes eran anchos fijos: unas
+// quedaban apretadas y otras con hueco de sobra), y la separación es constante.
+const PLAT_GAP = 26, PLAT_PAD = 26;
+const platW = PLATFORM.filter(p=>p.id!=='argocd')
+  .map(p => Math.max(textW(p.n, 13, 600), textW(p.sub, 10.5)) + PLAT_PAD*2);
+const platX = platW.reduce((acc,w,i) => {
+  acc.push(i === 0 ? PIPE_X + 6 : acc[i-1] + platW[i-1] + PLAT_GAP);
+  return acc;
+}, []);
 PLATFORM.filter(p=>p.id!=='argocd').forEach((p,i)=>{
   const g = gNodes.append('g').attr('class','node plat lit')
     .attr('data-id',p.id).style('cursor','pointer');
