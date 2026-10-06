@@ -57,8 +57,10 @@
   .stage rect.box{transition:stroke .12s,filter .12s}
   .stage:hover rect.box{stroke:var(--ink)}
   .stage.sel rect.box{stroke:var(--ink);stroke-width:2.2}
-  .dimmed{opacity:.17;transition:opacity .15s}
+  .dimmed{opacity:.1;transition:opacity .15s}
   .lit{opacity:1;transition:opacity .15s}
+  /* Sin flechas de dependencia, el halo es lo que señala «esto participa». */
+  .node.lit.involved rect{filter:drop-shadow(0 0 7px rgba(255,255,255,.22))}
   /* Controles */
   .bar{display:flex;gap:7px;flex-wrap:wrap;padding:10px 26px 12px;
     border-bottom:1px solid var(--line);align-items:center}
@@ -126,7 +128,6 @@
   <div class="sep"></div>
   <span class="barlbl">Recorrido</span>
   <button id="act3">Camino del ataque (acto 3)</button>
-  <button id="deps">Mostrar dependencias</button>
   <button id="reset">Limpiar</button>
   <button id="togglePanel">Ocultar panel</button>
 </div>
@@ -958,20 +959,12 @@ agentBox('approval', underStage('verify'), 600, AG_W, 84, '#1d1630', '#5b4387');
 const DEPS = [];
 /* `ends` son los DOS extremos del enlace: [[idsA],[idsB]]. Un enlace solo se
    enciende si hay algo iluminado en ambos lados. */
-function link(d, color, marker, dash, owners, label, ends){
-  const path = gLinks.append('path').attr('class','link dep')
-    .attr('d',d).attr('stroke',color).attr('stroke-width',1.8).attr('fill','none')
-    .attr('stroke-dasharray',dash||null).attr('marker-end',`url(#${marker})`)
-    .attr('opacity',0);
-  let text = null;
-  if(label){
-    text = gLinks.append('text').attr('class','link dep')
-      .attr('x',label.x).attr('y',label.y).attr('fill',color)
-      .attr('font-size',10).attr('font-weight',label.bold?600:400)
-      .attr('font-family','ui-monospace,Menlo,monospace')
-      .attr('opacity',0).text(label.t);
-  }
-  DEPS.push({ path, text, owners: new Set(owners), ends: ends || [owners, owners] });
+/* Registra una RELACIÓN entre nodos. No dibuja ninguna línea: las flechas de
+   dependencia cruzaban el lienzo y estorbaban más de lo que explicaban. La
+   relación se comunica encendiendo las cajas implicadas al seleccionar una. */
+function link(_d, _color, _marker, _dash, owners, label, ends){
+  DEPS.push({ owners: new Set(owners), ends: ends || [owners, owners],
+              label: label || null });
 }
 
 // Carriles libres: alturas por las que las flechas viajan en horizontal sin
@@ -1051,15 +1044,9 @@ link(route('argocd','remediation_ag',{from:'top',to:'bottom',lane:748}),
 /* Un enlace se enciende solo si AMBOS extremos están iluminados. Con `some()`
    bastaba con que coincidiera uno, así que al elegir `build` también se
    encendía la flecha de `sign`, porque las dos apuntan al almacén. */
-function showDeps(ids){
-  const want = new Set(ids);
-  DEPS.forEach(d => {
-    const on = d.ends.every(e => e.some(o => want.has(o)));
-    d.path.attr('opacity', on ? 1 : 0);
-    if(d.text) d.text.attr('opacity', on ? 1 : 0);
-  });
-}
-function hideDeps(){ showDeps([]); }
+/* Sin trazos que mostrar: la relación se ve en las cajas encendidas. */
+function showDeps(){}
+function hideDeps(){}
 
 /* ===========================================================================
    PANEL
@@ -1081,7 +1068,7 @@ function intro(){
     <h3>El punto de la charla</h3>
     <div class="note crit">El azul <b>aprueba</b>, la firma <b>verifica</b>, el agente
     <b>tiene credencial</b>. Y no entra: lo frena la <b>admisión</b>, no el modelo.</div>
-    <p class="hint">Clic en cualquier caja para el detalle.</p>
+    <p class="hint">Clic en cualquier caja: se encienden las piezas que participan con ella.</p>
   `);
 }
 
@@ -1220,15 +1207,17 @@ function showPlatform(p){
    Vista general = SOLO el flujo del pipeline, sin dependencias. Las líneas de
    dependencia aparecen únicamente al seleccionar uno de sus extremos.      */
 function showAll(){
-  d3.selectAll('.node').classed('dimmed',false).classed('lit',true);
+  d3.selectAll('.node').classed('dimmed',false).classed('lit',true)
+    .classed('involved',false);
   d3.selectAll('.flow').classed('dimmed',false).classed('lit',true);
   hideDeps();                      // nada de maraña en la vista por defecto
 }
 function dimAllBut(ids){
   const keep = new Set(ids);
   d3.selectAll('.node').each(function(){
-    const on = keep.has(d3.select(this).attr('data-id'));
-    d3.select(this).classed('dimmed',!on).classed('lit',on);
+    const el = d3.select(this);
+    const on = keep.has(el.attr('data-id'));
+    el.classed('dimmed',!on).classed('lit',on).classed('involved',on);
   });
   // El flujo del pipeline se atenúa pero no desaparece: da contexto.
   d3.selectAll('.flow').classed('dimmed',true).classed('lit',false);
@@ -1305,33 +1294,9 @@ d3.select('#act3').on('click',()=>{
     El agente puede falsificar una anotación, pero no puede hacerse pasar por Argo CD.</div>
   `);
 });
-// Las dependencias están ocultas por defecto; este botón las muestra todas a la
-// vez para quien quiera el panorama completo, asumiendo el cruce de líneas.
-d3.select('#deps').on('click', function(){
-  const on = !d3.select(this).classed('on');
-  d3.select(this).classed('on', on);
-  if(on){
-    showDeps([...STAGES.map(s=>s.id), ...Object.keys(AGENTS),
-              'zot','vllm','mcp','kyverno','argocd']);
-    panel.html(`<h2>Todas las dependencias</h2>
-      <p>Cada línea punteada es una dependencia real: quién llama a quién, quién lee
-      del registry, quién consulta el LLM o el catálogo.</p>
-      <div class="note">Están ocultas por defecto a propósito: dibujadas todas a la vez
-      tapan el flujo principal. Para leer una sola, haz clic en la caja que te interese.</div>
-      <h3>Qué significa cada color</h3>
-      <ul>
-        <li><b style="color:var(--teal)">Verde agua</b> — llamadas a la plataforma (registry, LLM, MCP)</li>
-        <li><b style="color:var(--purple)">Morado</b> — A2A entre el pipeline y los agentes</li>
-        <li><b style="color:var(--amber)">Ámbar</b> — el intento de despliegue y su rechazo</li>
-        <li><b style="color:var(--green)">Verde</b> — lo que gobierna Argo CD</li>
-      </ul>`);
-  } else { showAll(); intro(); }
-});
-
 d3.select('#reset').on('click',()=>{
   d3.selectAll('[data-layer]').classed('on',false);
   d3.select('[data-layer="all"]').classed('on',true);
-  d3.select('#deps').classed('on',false);
   d3.selectAll('.stage').classed('sel',false); showAll(); intro();
 });
 
