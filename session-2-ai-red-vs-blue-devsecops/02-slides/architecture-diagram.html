@@ -42,13 +42,15 @@
   h1{margin:0;font-size:19px;font-weight:650;letter-spacing:-.2px}
   .sub{margin-top:5px;font-size:12.5px;color:var(--dim)}
   .wrap{display:flex;gap:0;align-items:stretch;min-height:calc(100vh - 128px)}
+  /* Panel plegado: el diagrama ocupa todo el ancho. */
+  .wrap.collapsed aside{margin-right:-330px}
   .canvas{flex:1;min-width:0;overflow:auto;padding:14px 10px 30px}
-  aside{width:330px;flex:none;border-left:1px solid var(--line);
+  aside{width:330px;flex:none;border-left:1px solid var(--line);transition:margin-right .18s;
     background:var(--panel);padding:16px 18px 30px;overflow:auto}
   /* El SVG escala al ancho disponible pero nunca por debajo de 1500px: por
      debajo de eso las etiquetas se vuelven ilegibles, y es preferible que el
      lienzo se desplace en horizontal a que el texto no se lea. */
-  svg{display:block;margin:0 auto;width:100%;min-width:1500px;height:auto}
+  svg{display:block;margin:0 auto;width:100%;min-width:1980px;height:auto}
   text{font-family:inherit;-webkit-font-smoothing:antialiased}
   .mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace}
   .stage{cursor:pointer}
@@ -97,8 +99,8 @@
 <body>
 
 <header>
-  <h1>¿Dónde actúa cada cosa? — pipeline, agentes, GitOps y admisión</h1>
-  <div class="sub">Sesión 2 · Black Alpaca 2026 · clúster k3s propio · verificado contra el clúster, no de memoria</div>
+  <h1>Pipeline DevSecOps — dónde actúa cada agente</h1>
+  <div class="sub">Sesión 2 · Black Alpaca 2026 · k3s propio</div>
 </header>
 
 <div class="bar">
@@ -112,16 +114,15 @@
   <button id="act3">Camino del ataque (acto 3)</button>
   <button id="deps">Mostrar dependencias</button>
   <button id="reset">Limpiar</button>
+  <button id="togglePanel">Ocultar panel</button>
 </div>
 
 <div class="legend">
-  <span><i style="background:#2b3a4d"></i>Etapa Tekton (task)</span>
-  <span><i style="background:var(--red)"></i>Agente rojo / atacante</span>
-  <span><i style="background:var(--blue)"></i>Agente azul / revisor</span>
-  <span><i style="background:var(--purple)"></i>Agente con LLM + MCP</span>
-  <span><i style="background:var(--teal)"></i>Plataforma (registry, vLLM, MCP)</span>
-  <span><i style="background:var(--green)"></i>Argo CD / Git</span>
-  <span><i style="background:var(--amber)"></i>Kyverno / admisión</span>
+  <span><i style="background:var(--red)"></i>Rojo: ataca</span>
+  <span><i style="background:var(--blue)"></i>Azul: decide</span>
+  <span><i style="background:var(--purple)"></i>Agentes LLM: informan</span>
+  <span><i style="background:var(--amber)"></i>Kyverno: frena</span>
+  <span style="color:var(--faint)"><i style="background:none;border:1px dashed #5a6472"></i>borde punteado = por construir</span>
 </div>
 
 <div class="wrap">
@@ -215,83 +216,234 @@ const d3 = (() => {
    `col` es la columna (0..8) de la etapa en la banda del pipeline.
    =========================================================================== */
 
+// `status`: 'built' = ya existe en el pipeline real; 'todo' = falta construirlo.
+// El diagrama es la ESPECIFICACIÓN del pipeline objetivo, así que distingue
+// explícitamente lo que ya corre de lo que queda por hacer.
 const STAGES = [
-  { id:'sast', col:0, n:'1 · sast', sub:'semgrep + gitleaks',
-    kind:'scan', verdict:'informativo',
-    what:'Escanea el CÓDIGO del PR antes de construir nada (shift-left): semgrep para patrones de seguridad y gitleaks para secretos.',
-    steps:['materialize-sast-source — copia la fuente al workspace','semgrep — rulesets p/ci + p/secrets','gitleaks — detect --no-git','sast-verdict — decide OK / FINDINGS / ERROR'],
-    results:['status = OK | FINDINGS | ERROR'],
-    why:'Es INFORMATIVO a propósito (sast-blocking=false). Si bloqueara, la demo nunca llegaría al gate — y el mensaje de la charla es que la frontera real está más abajo, no en el linter.',
-    agent:null },
+  {
+    id: "git-clone",
+    col: 0,
+    n: "0 · git-clone",
+    sub: "clona el PR desde GitHub",
+    kind: "source",
+    verdict: "la fuente",
+    status: "todo",
+    what: "Clona el repositorio en la revisión del PR. Es el único origen de la fuente: a partir de aquí todo lo que el pipeline analiza, construye y firma viene de este clone.",
+    steps: [
+      "clone — git clone + checkout de la revisión del PR",
+      "(workspace compartido: el resto de etapas leen de aquí)",
+    ],
+    results: ["commit = sha del PR", "url = repo clonado"],
+    why: "Hoy la fuente llega por ConfigMap, lo cual es un atajo de laboratorio. Un pipeline DevSecOps de verdad arranca clonando: así el commit que se escanea, se construye y se firma es trazable hasta su revisión en Git. Sin esto, la cadena de supply chain no tiene origen verificable.",
+    agent: null,
+  },
 
-  { id:'build', col:1, n:'2 · build', sub:'kaniko → registry Zot',
-    kind:'build', verdict:'push real',
-    what:'kaniko construye la imagen de la app y la EMPUJA de verdad al registry interno Zot. Deja además el tar OCI y el digest en el workspace.',
-    steps:['materialize-source — Containerfile + index.html','kaniko-build-push — build + push (--insecure, Zot es HTTP interno)','record-image-ref — fija el Result'],
-    results:['image-ref = zot.registry.svc…/sample-app:latest'],
-    why:'Único step del pipeline que corre como root (uid 0), y está documentado como excepción de compliance: kaniko desempaqueta el rootfs en «/» y eso requiere uid 0. Mitigado con drop ALL + solo 6 capabilities, sin token de API y acotado a esta sola task.',
-    agent:null },
+  {
+    id: "test",
+    col: 1,
+    n: "1 · test",
+    sub: "unit tests + lint",
+    kind: "scan",
+    verdict: "calidad",
+    status: "todo",
+    what: "Ejecuta las pruebas y el linter de la app sobre la fuente clonada, antes de construir la imagen.",
+    steps: [
+      "unit-tests — la batería de pruebas de la app",
+      "lint — estilo y errores estáticos del lenguaje",
+    ],
+    results: ["status = PASS | FAIL"],
+    why: "Va antes del build por economía: si el código no pasa sus propias pruebas, no tiene sentido construir, escanear y firmar una imagen. No es una etapa de seguridad, es la higiene mínima que la audiencia espera ver en un pipeline real.",
+    agent: null,
+  },
 
-  { id:'sbom', col:2, n:'3 · sbom', sub:'Syft (CycloneDX + SPDX)',
-    kind:'scan', verdict:'artefacto',
-    what:'Syft genera el inventario de componentes de la imagen, leyendo el TAR OCI local (no el registry).',
-    steps:['syft-sbom — docker-archive: → cyclonedx-json + spdx-json','record-sbom'],
-    results:['sbom-status = OK | SKIPPED'],
-    why:'Lee el tar y no el registry porque es el mismo contenido bit a bit que se empujó, no necesita red ni flags insecure, y es reproducible. Describe exactamente la imagen que luego se firma por digest.',
-    agent:null },
+  {
+    id: "sast",
+    col: 2,
+    n: "2 · sast",
+    sub: "semgrep + gitleaks",
+    kind: "scan",
+    verdict: "informativo",
+    status: "built",
+    what: "Escanea el CÓDIGO del PR antes de construir nada (shift-left): semgrep para patrones de seguridad y gitleaks para secretos.",
+    steps: [
+      "semgrep — rulesets p/ci + p/secrets",
+      "gitleaks — detect --no-git",
+      "sast-verdict — decide OK / FINDINGS / ERROR",
+    ],
+    results: ["status = OK | FINDINGS | ERROR"],
+    why: "Es INFORMATIVO a propósito (sast-blocking=false). Si bloqueara, la demo nunca llegaría al gate — y el mensaje de la charla es que la frontera real está más abajo, no en el linter.",
+    agent: null,
+  },
 
-  { id:'trivy-scan', col:3, n:'4 · trivy-scan', sub:'Trivy sobre la imagen',
-    kind:'scan', verdict:'informativo',
-    what:'Trivy hace pull de la imagen DEL REGISTRY y la escanea. También escanea el filesystem del contexto (secretos, misconfig). Política HIGH,CRITICAL.',
-    steps:['trivy fs — vuln,secret,misconfig','trivy image --insecure — la imagen real del registry','+ salida JSON con --list-all-pkgs para el agente de remediación'],
-    results:['status = OK | FINDINGS | SKIPPED'],
-    why:'El flag --list-all-pkgs no es decorativo: produce el grafo DependsOn con el que el agente de remediación calcula qué carga de verdad la app. Sin ese grafo el modelo opinaría sobre supuestos.',
-    agent:null },
+  {
+    id: "build",
+    col: 3,
+    n: "3 · build",
+    sub: "kaniko → registry Zot",
+    kind: "build",
+    verdict: "push real",
+    status: "built",
+    what: "kaniko construye la imagen de la app y la EMPUJA de verdad al registry interno Zot. Deja además el tar OCI y el digest en el workspace.",
+    steps: [
+      "kaniko-build-push — build + push (--insecure, Zot es HTTP interno)",
+      "record-image-ref — fija el Result",
+    ],
+    results: ["image-ref = zot.registry.svc…/sample-app:latest"],
+    why: "Único step del pipeline que corre como root (uid 0), documentado como excepción de compliance: kaniko desempaqueta el rootfs en «/» y eso requiere uid 0. Mitigado con drop ALL + solo 6 capabilities, sin token de API y acotado a esta sola task.",
+    agent: null,
+  },
 
-  { id:'remediation', col:4, n:'4b · remediation', sub:'agente de remediación',
-    kind:'agentstage', verdict:'informativo',
-    what:'Un cliente A2A manda los JSON de Trivy y el Containerfile al agente de remediación, que responde con el análisis priorizado. No aplica nada.',
-    steps:['advise — remediation-request → agente (puerto 8081, solo la skill «advise»)'],
-    results:['(sin Result; el informe queda en el agente y en Backstage)'],
-    why:'Desde aquí corre código que viene del PR, así que solo alcanza la puerta «advise» por NetworkPolicy. Confirmar una corrección está en OTRO puerto al que este namespace no llega: el pipeline puede pedir consejo, nunca aplicarlo.',
-    agent:'remediation' },
+  {
+    id: "sbom",
+    col: 4,
+    n: "4 · sbom",
+    sub: "Syft (CycloneDX + SPDX)",
+    kind: "scan",
+    verdict: "artefacto",
+    status: "built",
+    what: "Syft genera el inventario de componentes de la imagen, leyendo el TAR OCI local (no el registry).",
+    steps: [
+      "syft-sbom — docker-archive: → cyclonedx-json + spdx-json",
+      "record-sbom",
+    ],
+    results: ["sbom-status = OK | SKIPPED"],
+    why: "Lee el tar y no el registry porque es el mismo contenido bit a bit que se empujó, no necesita red ni flags insecure, y es reproducible. Describe exactamente la imagen que luego se firma por digest.",
+    agent: null,
+  },
 
-  { id:'sign', col:5, n:'5 · sign', sub:'cosign firma por digest',
-    kind:'supply', verdict:'firma real',
-    what:'cosign firma la imagen del registry POR DIGEST con la clave del duelo y sube la firma al registry como artefacto OCI.',
-    steps:['compose-ref — lee el digest y compone repo@sha256:… (step result)','cosign-sign-image — imagen distroless, por eso command/args y no script','record-sign'],
-    results:['sign-status = OK','image-ref-by-digest = repo@sha256:…'],
-    why:'Se firma por DIGEST y no por tag porque el tag es mutable y el digest no. El patrón compose-ref existe porque la imagen de cosign es distroless: sin shell no puede leer un archivo ni componer strings, así que un step previo con shell le pasa la ref ya resuelta.',
-    agent:null },
+  {
+    id: "trivy-scan",
+    col: 5,
+    n: "5 · trivy-scan",
+    sub: "Trivy sobre la imagen",
+    kind: "scan",
+    verdict: "informativo",
+    status: "built",
+    what: "Trivy hace pull de la imagen DEL REGISTRY y la escanea. También escanea el filesystem del contexto (secretos, misconfig). Política HIGH,CRITICAL.",
+    steps: [
+      "trivy fs — vuln,secret,misconfig",
+      "trivy image --insecure — la imagen real del registry",
+      "+ salida JSON con --list-all-pkgs para el agente de remediación",
+    ],
+    results: ["status = OK | FINDINGS | SKIPPED"],
+    why: "El flag --list-all-pkgs no es decorativo: produce el grafo DependsOn con el que el agente de remediación calcula qué carga de verdad la app. Sin ese grafo el modelo opinaría sobre supuestos.",
+    agent: null,
+  },
 
-  { id:'gate-blue', col:6, n:'6 · gate-blue', sub:'rojo → azul (A2A)',
-    kind:'gate', verdict:'el corazón',
-    what:'EL CORAZÓN DEL ATAQUE. El agente rojo (step) envía el PR al agente azul (servicio en su propio sandbox), que decide APPROVE o BLOCK.',
-    steps:['red-open-pr — red-attacker submit --blue-url … (stdout = la decisión)','simulate-merge — el merge es SIMULADO: el runner no tiene RBAC de merge, a propósito'],
-    results:['decision = APPROVE | BLOCK'],
-    why:'El step del rojo no tiene token de API ni salida a internet: por NetworkPolicy solo puede hablar con el azul. El azul corre como servicio aparte para que el ataque tenga que cruzar una frontera de red real, no una llamada de función.',
-    agent:'blue' },
+  {
+    id: "remediation",
+    col: 6,
+    n: "5b · remediation",
+    sub: "agente de remediación",
+    kind: "agentstage",
+    verdict: "informativo",
+    status: "built",
+    what: "Un cliente A2A manda los JSON de Trivy y el Containerfile al agente de remediación, que responde con el análisis priorizado. No aplica nada.",
+    steps: [
+      "advise — remediation-request → agente (puerto 8081, solo la skill «advise»)",
+    ],
+    results: ["(sin Result; el informe queda en el agente y en Backstage)"],
+    why: "Desde aquí corre código que viene del PR, así que solo alcanza la puerta «advise» por NetworkPolicy. Confirmar una corrección está en OTRO puerto al que este namespace no llega: el pipeline puede pedir consejo, nunca aplicarlo.",
+    agent: "remediation",
+  },
 
-  { id:'verify', col:7, n:'7 · verify', sub:'cosign verifica',
-    kind:'supply', verdict:'verifica OK',
-    what:'cosign verifica la firma de la imagen por digest con la clave pública. En la demo la firma es VÁLIDA.',
-    steps:['compose-ref — misma ref por digest','cosign-verify — con cosign.pub','record-verify'],
-    results:['verify-status = OK | FAIL | SKIPPED'],
-    why:'PUNTO CLAVE DE LA CHARLA: la firma verifica correctamente porque el PR envenenado NO tocó la imagen — solo tocó CONFIG. La cadena de supply chain está intacta y aun así el ataque sigue vivo. La firma es necesaria y no es suficiente.',
-    agent:null },
+  {
+    id: "sign",
+    col: 7,
+    n: "6 · sign",
+    sub: "cosign firma por digest",
+    kind: "supply",
+    verdict: "firma real",
+    status: "built",
+    what: "cosign firma la imagen del registry POR DIGEST con la clave del duelo y sube la firma al registry como artefacto OCI.",
+    steps: [
+      "compose-ref — lee el digest y compone repo@sha256:…",
+      "cosign-sign-image — imagen distroless, por eso command/args",
+      "record-sign",
+    ],
+    results: ["sign-status = OK", "image-ref-by-digest = repo@sha256:…"],
+    why: "Se firma por DIGEST y no por tag porque el tag es mutable y el digest no. El patrón compose-ref existe porque la imagen de cosign es distroless: sin shell no puede leer un archivo ni componer strings.",
+    agent: null,
+  },
 
-  { id:'deploy-gitops', col:8, n:'8 · deploy-gitops', sub:'el agente intenta desplegar',
-    kind:'deploy', verdict:'rechazado',
-    what:'Solo corre si decision==APPROVE Y verify-status==OK. El agente usa su credencial real (sample-app-deployer) e intenta desplegar dos veces. Kyverno rechaza ambas.',
-    steps:['agent-deploy — intento 1: el manifiesto del PR tal cual → sin aprobación humana','agent-deploy — intento 2: el agente se pone él mismo la anotación → no viene de GitOps'],
-    results:['admission = REJECTED | ADMITTED'],
-    why:'Aquí cierra la narrativa: el agente aprobó, la firma es válida y el agente SÍ tiene credencial. Y no entra. No porque el modelo acertara, sino porque la plataforma exige aprobación humana Y que el cambio lo aplique Argo CD. El agente puede falsificar una anotación; no puede hacerse pasar por GitOps.',
-    agent:null }
+  {
+    id: "attest",
+    col: 8,
+    n: "7 · attest",
+    sub: "procedencia SLSA",
+    kind: "supply",
+    verdict: "procedencia",
+    status: "todo",
+    what: "Genera y firma una attestation de procedencia (SLSA provenance): quién construyó esta imagen, desde qué commit, con qué pipeline. Se adjunta a la imagen en el registry.",
+    steps: [
+      "cosign attest — predicado SLSA provenance + SBOM",
+      "sube la attestation al registry junto a la imagen",
+    ],
+    results: ["attest-status = OK | SKIPPED"],
+    why: "La firma dice «esta imagen es mía»; la attestation dice «y la construí yo, desde ESTE commit, con ESTE pipeline». Es lo que conecta la imagen desplegada con el clone de la etapa 0. En la charla refuerza el punto clave: toda esta cadena puede estar perfecta y aun así no detener el ataque, porque el PR envenenado no toca la imagen.",
+    agent: null,
+  },
+
+  {
+    id: "gate-blue",
+    col: 9,
+    n: "8 · gate-blue",
+    sub: "rojo → azul (A2A)",
+    kind: "gate",
+    verdict: "el corazón",
+    status: "built",
+    what: "EL CORAZÓN DEL ATAQUE. El agente rojo (step) envía el PR al agente azul (servicio en su propio sandbox), que decide APPROVE o BLOCK.",
+    steps: [
+      "red-open-pr — red-attacker submit --blue-url … (stdout = la decisión)",
+      "simulate-merge — el merge es SIMULADO: el runner no tiene RBAC de merge, a propósito",
+    ],
+    results: ["decision = APPROVE | BLOCK"],
+    why: "El step del rojo no tiene token de API ni salida a internet: por NetworkPolicy solo puede hablar con el azul. El azul corre como servicio aparte para que el ataque tenga que cruzar una frontera de red real, no una llamada de función.",
+    agent: "blue",
+  },
+
+  {
+    id: "verify",
+    col: 10,
+    n: "9 · verify",
+    sub: "cosign verifica",
+    kind: "supply",
+    verdict: "verifica OK",
+    status: "built",
+    what: "cosign verifica la firma de la imagen por digest con la clave pública. En la demo la firma es VÁLIDA.",
+    steps: [
+      "compose-ref — misma ref por digest",
+      "cosign-verify — con cosign.pub",
+      "record-verify",
+    ],
+    results: ["verify-status = OK | FAIL | SKIPPED"],
+    why: "PUNTO CLAVE DE LA CHARLA: la firma verifica correctamente porque el PR envenenado NO tocó la imagen — solo tocó CONFIG. La cadena de supply chain está intacta y aun así el ataque sigue vivo. La firma es necesaria y no es suficiente.",
+    agent: null,
+  },
+
+  {
+    id: "deploy-gitops",
+    col: 11,
+    n: "10 · deploy-gitops",
+    sub: "el agente despliega",
+    kind: "deploy",
+    verdict: "rechazado",
+    status: "built",
+    what: "Solo corre si decision==APPROVE Y verify-status==OK. El agente usa su credencial real (sample-app-deployer) e intenta desplegar dos veces. Kyverno rechaza ambas.",
+    steps: [
+      "agent-deploy — intento 1: el manifiesto del PR tal cual → sin aprobación humana",
+      "agent-deploy — intento 2: el agente se pone él mismo la anotación → no viene de GitOps",
+    ],
+    results: ["admission = REJECTED | ADMITTED"],
+    why: "Aquí cierra la narrativa: el agente aprobó, la firma es válida y el agente SÍ tiene credencial. Y no entra. No porque el modelo acertara, sino porque la plataforma exige aprobación humana Y que el cambio lo aplique Argo CD.",
+    agent: null,
+  },
 ];
 
 const AGENTS = {
   remediation:{
     n:'devsecops-remediation-agent', ns:'devsecops-agent', color:'var(--purple)',
+    short:'Agente de remediación', brief:'Analiza las vulns con el LLM y propone el parche.',
     role:'Analiza vulnerabilidades con el LLM y propone el parche. La persona confirma.',
     llm:true, mcp:true, under:'remediation',
     detail:{
@@ -308,6 +460,7 @@ const AGENTS = {
   },
   blue:{
     n:'blue-reviewer  ·  blue-reviewer-hardened', ns:'devsecops-duel', color:'var(--blue)',
+    short:'Agente AZUL · revisor', brief:'Decide APPROVE o BLOCK. Es el objetivo del ataque.',
     role:'Revisa el PR y decide APPROVE o BLOCK. Es el objetivo del ataque.',
     llm:true, mcp:false, under:'gate-blue',
     detail:{
@@ -323,6 +476,7 @@ const AGENTS = {
   },
   red:{
     n:'red-attacker (step del pipeline)', ns:'devsecops-duel', color:'var(--red)',
+    short:'Agente ROJO · atacante', brief:'Manda el PR al azul. Sin credenciales ni internet.',
     role:'Abre el PR y lo manda al azul. Corre DENTRO del pipeline.',
     llm:false, mcp:false, under:'gate-blue',
     detail:{
@@ -338,6 +492,7 @@ const AGENTS = {
   },
   approval:{
     n:'backstage-devsecops-agent', ns:'devsecops-agent', color:'var(--purple)',
+    short:'Agente de aprobación', brief:'¿El azul acertó o lo engañaron? Segunda opinión.',
     role:'Segunda opinión sobre cada corrida: ¿el azul acertó o lo engañaron?',
     llm:true, mcp:true, under:null,
     detail:{
@@ -375,15 +530,20 @@ const PLATFORM = [
 /* ===========================================================================
    LAYOUT — geometría explícita
    =========================================================================== */
-// El ancho se deriva de la geometría (bloque de arranque + 9 columnas + márgenes),
-// no se fija a ojo: así añadir una etapa no deja nada cortado fuera del viewBox.
-const COL_W = 158, COL_GAP = 30, PIPE_Y = 316;
-const START_W = 196;                 // el bloque «aquí empieza todo»
-const PIPE_X = 60 + START_W + 56;    // las etapas arrancan tras el disparador
-const W = PIPE_X + 9 * (COL_W + COL_GAP) - COL_GAP + 120;
+// El ancho se deriva del NÚMERO REAL de etapas, no de una constante a ojo: al
+// pasar de 9 a 11 etapas el lienzo crece solo y nada queda fuera del viewBox.
+const COL_W = 142, COL_GAP = 26, PIPE_Y = 316;
+const START_W = 186;                 // el bloque «aquí empieza todo»
+const PIPE_X = 54 + START_W + 46;    // las etapas arrancan tras el disparador
+const N_COLS = STAGES.length;
+const W = PIPE_X + N_COLS * (COL_W + COL_GAP) - COL_GAP + 100;
 const BOX_H = 82;
 const colX = c => PIPE_X + c * (COL_W + COL_GAP);
+const colCX_ = c => colX(c) + COL_W / 2;
 const colCX = c => colX(c) + COL_W / 2;
+const colOf = id => STAGES.find(s=>s.id===id).col;
+const sx_ = id => colX(colOf(id));          // x izquierda de una etapa por id
+const scx_ = id => colCX(colOf(id));        // x centro de una etapa por id
 const H = 940;
 
 // Solo viewBox: el ancho/alto reales los pone el CSS para que escale al panel.
@@ -440,20 +600,22 @@ function band(x,y,w,h,label,color,sub){
 
 /* --- bandas (namespaces / zonas) --------------------------------------- */
 // Las bandas arrancan en el bloque «empieza aquí» (x=60), no en la etapa 1.
-const BAND_X = 60, BAND_W = colX(8)+COL_W + 26 - BAND_X;
+const BAND_X = 54, BAND_W = colX(N_COLS-1)+COL_W + 26 - BAND_X;
 const PIPE_W = BAND_W;
-band(BAND_X, PIPE_Y-124, PIPE_W, BOX_H+218,
-  'NAMESPACE  devsecops-duel   ·   el pipeline y el agente azul', '#8b98a5',
-  'carga no confiable · sin credenciales de clúster');
+// Las bandas se nombran por su ROL, no por el namespace: el namespace es un
+// detalle de implementación y va en el subtítulo.
+band(BAND_X, PIPE_Y-128, PIPE_W, BOX_H+226,
+  'EL PIPELINE   ·   aquí corre el código del PR', '#8b98a5',
+  'ns devsecops-duel · carga no confiable, sin credenciales');
 band(BAND_X, 560, PIPE_W, 150,
-  'NAMESPACE  devsecops-agent   ·   los agentes con credenciales', 'var(--purple)',
-  'LLM + MCP + lectura de PipelineRuns + clave de Git');
+  'QUÉ AGENTE ACTÚA EN CADA ETAPA', 'var(--purple)',
+  'ns devsecops-agent · estos sí tienen credenciales, y solo informan');
 band(BAND_X, 60, PIPE_W, 150,
-  'PLATAFORMA  ·  servicios del clúster', 'var(--teal)',
+  'DE QUÉ DEPENDE   ·   servicios del clúster', 'var(--teal)',
   'ninguno sale a internet');
 band(BAND_X, 742, PIPE_W, 182,
-  'GOBIERNO  ·  qué es declarativo y quién lo aplica', 'var(--green)',
-  'repo homelab-gitops → Argo CD → clúster');
+  'QUIÉN LO GOBIERNA   ·   y quién decide qué entra', 'var(--green)',
+  'Argo CD aplica · Kyverno admite o rechaza');
 
 /* --- plataforma (fila superior) ---------------------------------------- */
 const platX = [PIPE_X+6, PIPE_X+282, PIPE_X+558, PIPE_X+858, PIPE_X+1140];
@@ -508,10 +670,22 @@ const KIND_STROKE = { scan:'#3d5872', build:'#4a4d60', supply:'#2f5b60',
 STAGES.forEach(s=>{
   const g = gNodes.append('g').attr('class','node stage lit')
     .attr('data-id',s.id).attr('data-stage',s.id);
+  // Las etapas por construir se dibujan con borde discontinuo: el diagrama es la
+  // ESPECIFICACIÓN del pipeline objetivo, y hay que poder ver de un vistazo qué
+  // parte ya corre en el clúster y qué parte falta implementar.
+  const todo = s.status === 'todo';
   g.append('rect').attr('class','box')
     .attr('x',colX(s.col)).attr('y',PIPE_Y).attr('width',COL_W).attr('height',BOX_H)
-    .attr('rx',9).attr('fill',KIND_FILL[s.kind]).attr('stroke',KIND_STROKE[s.kind])
-    .attr('stroke-width',1.4);
+    .attr('rx',9).attr('fill',todo ? '#15171c' : KIND_FILL[s.kind])
+    .attr('stroke',todo ? '#5a6472' : KIND_STROKE[s.kind])
+    .attr('stroke-width',1.4)
+    .attr('stroke-dasharray', todo ? '5 4' : null);
+  if(todo){
+    g.append('text').attr('x',colX(s.col)+COL_W-10).attr('y',PIPE_Y+BOX_H-9)
+      .attr('text-anchor','end').attr('fill','#7c8798')
+      .attr('font-size',9).attr('font-weight',700).attr('letter-spacing','.7px')
+      .text('POR CONSTRUIR');
+  }
   // El número de orden va en su propia píldora: a tamaño de pantalla es lo que
   // deja claro que son pasos de una secuencia y no cajas sueltas.
   const num = s.n.split(' ')[0];
@@ -547,7 +721,7 @@ for(let i=0;i<STAGES.length-1;i++){
 }
 // el when de deploy-gitops
 gLinks.append('text').attr('class','lit')
-  .attr('x',colCX(8)).attr('y',PIPE_Y-14).attr('text-anchor','middle')
+  .attr('x',scx_('deploy-gitops')).attr('y',PIPE_Y-14).attr('text-anchor','middle')
   .attr('fill','#d29922').attr('font-size',10)
   .attr('font-family','ui-monospace,Menlo,monospace')
   .text('when: decision==APPROVE && verify==OK');
@@ -562,23 +736,16 @@ gLinks.append('text').attr('class','lit')
   g.append('rect').attr('x',sx).attr('y',sy).attr('width',START_W).attr('height',sh)
     .attr('rx',10).attr('fill','#2a1518').attr('stroke','#c23b45').attr('stroke-width',2.4);
 
-  g.append('text').attr('x',sx+16).attr('y',sy+26).attr('fill','#ff8d85')
+  g.append('text').attr('x',sx+16).attr('y',sy+28).attr('fill','#ff8d85')
     .attr('font-size',11).attr('font-weight',700).attr('letter-spacing','1.3px')
     .text('EMPIEZA AQUÍ');
-  g.append('text').attr('x',sx+16).attr('y',sy+52).attr('fill','#e6edf3')
-    .attr('font-size',15).attr('font-weight',700).text('Se abre un PR');
-  const t = g.append('text').attr('x',sx+16).attr('y',sy+74).attr('fill','#d9b6b4')
-    .attr('font-size',11.5);
-  t.text('Código que no controlas entra a tu CI y dispara el PipelineRun.');
-  wrap(t, START_W-32, 14);
-  // La fuente NO llega por git clone: se materializa desde ConfigMaps. Decirlo
-  // aquí evita que el diagrama parezca que se salta un paso.
-  g.append('text').attr('x',sx+16).attr('y',sy+sh-26).attr('fill','#9c7b84')
-    .attr('font-size',10).attr('font-family','ui-monospace,Menlo,monospace')
-    .text('fuente: ConfigMap sample-app-src');
-  g.append('text').attr('x',sx+16).attr('y',sy+sh-12).attr('fill','#9c7b84')
-    .attr('font-size',10).attr('font-family','ui-monospace,Menlo,monospace')
-    .text('(sin git clone) → 9 etapas');
+  g.append('text').attr('x',sx+16).attr('y',sy+56).attr('fill','#e6edf3')
+    .attr('font-size',17).attr('font-weight',700).text('Se abre un PR');
+  g.append('text').attr('x',sx+16).attr('y',sy+80).attr('fill','#d9b6b4')
+    .attr('font-size',12).text('Código que no controlas.');
+  g.append('text').attr('x',sx+16).attr('y',sy+sh-14).attr('fill','#9c7b84')
+    .attr('font-size',10.5).attr('font-family','ui-monospace,Menlo,monospace')
+    .text('→ dispara el PipelineRun');
 
   g.on('click',()=>showStart());
 
@@ -594,7 +761,7 @@ gLinks.append('text').attr('class','lit')
   .attr('x',colX(0)).attr('y',PIPE_Y-44)
   .attr('fill','#7d8da0').attr('font-size',11).attr('font-weight',650)
   .attr('letter-spacing','1.4px')
-  .text('EL PIPELINE CORRE DE IZQUIERDA A DERECHA  →  9 etapas encadenadas con runAfter');
+  .text(`${STAGES.length} ETAPAS, DE IZQUIERDA A DERECHA`);
 
 /* --- agentes ----------------------------------------------------------- */
 // rojo y azul dentro del namespace del duelo, bajo gate-blue
@@ -604,26 +771,34 @@ function agentBox(key, x, y, w, h, fill, stroke){
     .attr('data-id',key).style('cursor','pointer');
   g.append('rect').attr('x',x).attr('y',y).attr('width',w).attr('height',h)
     .attr('rx',9).attr('fill',fill).attr('stroke',stroke).attr('stroke-width',1.5);
-  g.append('text').attr('x',x+12).attr('y',y+21).attr('fill','#e6edf3')
-    .attr('font-size',12.5).attr('font-weight',650).text(a.n.length>34? a.n.slice(0,33)+'…' : a.n);
-  g.append('text').attr('x',x+12).attr('y',y+38).attr('fill','#8b98a5')
-    .attr('font-size',10.5).text(`ns ${a.ns}`);
-  const r = g.append('text').attr('x',x+12).attr('y',y+56).attr('fill','#aab8c6')
+  // Lo que importa no es el namespace (detalle de implementación) sino EN QUÉ
+  // ETAPA actúa el agente. Eso es lo que va en la segunda línea.
+  g.append('text').attr('x',x+12).attr('y',y+22).attr('fill','#e6edf3')
+    .attr('font-size',12.5).attr('font-weight',650)
+    .text(a.short || (a.n.length>30? a.n.slice(0,29)+'…' : a.n));
+  g.append('text').attr('x',x+12).attr('y',y+40).attr('fill','#9aa7b4')
+    .attr('font-size',10.5).attr('font-family','ui-monospace,Menlo,monospace')
+    .text(a.under ? `actúa en: ${a.under}` : 'observa todas las etapas');
+  const r = g.append('text').attr('x',x+12).attr('y',y+58).attr('fill','#aab8c6')
     .attr('font-size',11);
-  r.text(a.role); wrap(r, w-24, 13);
+  r.text(a.brief || a.role); wrap(r, w-24, 13);
   g.on('click',()=>showAgent(key));
   return g;
 }
 
-// agente rojo (step, dentro del pipeline) — justo encima de gate-blue
-agentBox('red', colX(6)-10, PIPE_Y-92, 242, 72, '#2a1518', '#8c3a42');
-// agente azul (servicio) — debajo de gate-blue
-agentBox('blue', colX(6)-10, PIPE_Y+BOX_H+18, 230, 72, '#15202e', '#2f5b85');
+// Cada agente se dibuja ALINEADO con la etapa en la que actúa: esa correspondencia
+// vertical es la respuesta a «¿qué agente interviene en cada etapa?».
+const AG_W = 230;
+const underStage = id => sx_(id) + COL_W/2 - AG_W/2;   // centrado bajo su etapa
 
-// agente de remediación — debajo de la etapa remediation, en su namespace
-agentBox('remediation', colX(4)-38, 600, 266, 86, '#1d1630', '#5b4387');
-// agente de aprobación — a la derecha, sin etapa (observa todas)
-agentBox('approval', colX(7)-30, 600, 290, 86, '#1d1630', '#5b4387');
+// rojo: es un step DENTRO de gate-blue → va encima de esa etapa
+agentBox('red', underStage('gate-blue'), PIPE_Y-96, AG_W, 76, '#2a1518', '#8c3a42');
+// azul: servicio aparte al que llama gate-blue → justo debajo
+agentBox('blue', underStage('gate-blue'), PIPE_Y+BOX_H+18, AG_W, 76, '#15202e', '#2f5b85');
+// remediación: cuelga de la etapa remediation
+agentBox('remediation', underStage('remediation'), 600, AG_W, 84, '#1d1630', '#5b4387');
+// aprobación: no cuelga de una etapa, observa todas las corridas
+agentBox('approval', underStage('verify'), 600, AG_W, 84, '#1d1630', '#5b4387');
 
 /* --- enlaces de dependencia --------------------------------------------
    DECISIÓN DE DISEÑO: estos enlaces NO se dibujan por defecto.
@@ -652,42 +827,42 @@ function link(d, color, marker, dash, owners, label){
 }
 
 // rojo → gate-blue (es un step de esa task)
-link(`M${colX(6)+80},${PIPE_Y-20}V${PIPE_Y}`, '#f85149','ared',null,['red','gate-blue']);
+link(`M${scx_('gate-blue')},${PIPE_Y-20}V${PIPE_Y}`, '#f85149','ared',null,['red','gate-blue']);
 // gate-blue → azul (A2A)
-link(`M${colX(6)+80},${PIPE_Y+BOX_H}V${PIPE_Y+BOX_H+18}`, '#58a6ff','ablue',null,
-  ['blue','gate-blue'], {x:colX(6)+88, y:PIPE_Y+BOX_H+13, t:'A2A'});
+link(`M${scx_('gate-blue')},${PIPE_Y+BOX_H}V${PIPE_Y+BOX_H+18}`, '#58a6ff','ablue',null,
+  ['blue','gate-blue'], {x:scx_('gate-blue')+8, y:PIPE_Y+BOX_H+13, t:'A2A'});
 
 // remediation (etapa) → agente de remediación
-link(`M${colCX(4)},${PIPE_Y+BOX_H}V${572}H${colX(4)+95}V600`, '#bc8cff','apurple','4 3',
-  ['remediation'], {x:colCX(4)+8, y:PIPE_Y+BOX_H+30, t:'A2A · solo «advise» (8081)'});
+link(`M${scx_('remediation')},${PIPE_Y+BOX_H}V${572}H${sx_('remediation')+63}V600`, '#bc8cff','apurple','4 3',
+  ['remediation'], {x:scx_('remediation')+8, y:PIPE_Y+BOX_H+30, t:'A2A · solo «advise» (8081)'});
 
 // agente de aprobación lee PipelineRuns
-link(`M${colX(8)+COL_W-30},${PIPE_Y+BOX_H}V548H${colX(7)+115}V600`, '#bc8cff','apurple','4 3',
-  ['approval'], {x:colX(8)-6, y:540, t:'lee PipelineRuns (RBAC solo lectura)'});
+link(`M${scx_('deploy-gitops')},${PIPE_Y+BOX_H}V548H${sx_('verify')+96}V600`, '#bc8cff','apurple','4 3',
+  ['approval'], {x:sx_('verify')+110, y:540, t:'lee PipelineRuns (RBAC solo lectura)'});
 
 // agentes → vLLM y MCP
-link(`M${colX(4)+95},600V524H${platX[1]+125}V158`, '#39c5bb','ateal','3 3',
+link(`M${sx_('remediation')+63},600V524H${platX[1]+125}V158`, '#39c5bb','ateal','3 3',
   ['remediation','vllm','mcp']);
-link(`M${colX(7)+115},600V536H${platX[2]+137}V158`, '#39c5bb','ateal','3 3',
+link(`M${sx_('verify')+96},600V536H${platX[2]+137}V158`, '#39c5bb','ateal','3 3',
   ['approval','vllm','mcp']);
 // azul → vLLM (modo llm)
-link(`M${colX(6)+200},${PIPE_Y+BOX_H+18}V${PIPE_Y+BOX_H+4}H${colX(6)+248}V200H${platX[1]+190}V158`,
+link(`M${sx_('gate-blue')+150},${PIPE_Y+BOX_H+18}V${PIPE_Y+BOX_H+4}H${sx_('gate-blue')+196}V200H${platX[1]+190}V158`,
   '#39c5bb','ateal','3 3', ['blue','vllm']);
 
 // build → Zot ; sign/verify ↔ Zot
-link(`M${colCX(1)},${PIPE_Y}V236H${platX[0]+125}V158`, '#39c5bb','ateal','3 3',
+link(`M${scx_('build')},${PIPE_Y}V236H${platX[0]+125}V158`, '#39c5bb','ateal','3 3',
   ['build','zot']);
-link(`M${colCX(5)},${PIPE_Y}V214H${platX[0]+180}V158`, '#39c5bb','ateal','3 3',
+link(`M${scx_('sign')},${PIPE_Y}V214H${platX[0]+180}V158`, '#39c5bb','ateal','3 3',
   ['sign','verify','trivy-scan','zot']);
 
 // deploy-gitops → Kyverno (el rechazo)
-link(`M${colCX(8)},${PIPE_Y}V250H${platX[3]+137}V158`, '#d29922','aamber',null,
-  ['deploy-gitops','kyverno'], {x:colCX(8)+10, y:244, t:'RECHAZADO ×2', bold:true});
+link(`M${scx_('deploy-gitops')},${PIPE_Y}V250H${platX[3]+137}V158`, '#d29922','aamber',null,
+  ['deploy-gitops','kyverno'], {x:scx_('deploy-gitops')+10, y:244, t:'RECHAZADO ×2', bold:true});
 
 // Argo CD gobierna el pipeline y los agentes
-link(`M${PIPE_X+188},776V730H${colCX(2)}V${PIPE_Y+BOX_H}`, '#3fb950','agreen','4 3',
+link(`M${PIPE_X+188},776V730H${scx_('sbom')}V${PIPE_Y+BOX_H}`, '#3fb950','agreen','4 3',
   ['argocd']);
-link(`M${PIPE_X+188},776V730H${colX(4)+95}V686`, '#3fb950','agreen','4 3',
+link(`M${PIPE_X+188},776V730H${sx_('remediation')+63}V686`, '#3fb950','agreen','4 3',
   ['argocd']);
 
 /* Enciende solo las dependencias que tocan alguno de los nodos dados. */
@@ -709,29 +884,19 @@ const esc = s => String(s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&g
 
 function intro(){
   panel.html(`
-    <h2>Cómo leer este mapa</h2>
-    <p>De izquierda a derecha, las <b>9 etapas</b> del pipeline Tekton en el orden real
-    en que corren (<code>runAfter</code>).</p>
-    <h3>Las cuatro bandas</h3>
+    <h2>Cómo leer esto</h2>
+    <p>Un PR entra por la izquierda y recorre <b>${STAGES.length} etapas</b>.</p>
+    <h3>Las bandas</h3>
     <ul>
-      <li><b>Plataforma</b> (arriba) — registry, el LLM y la puerta MCP. Nada sale a internet.</li>
-      <li><b>devsecops-duel</b> — el pipeline y el agente azul. Aquí corre carga <b>no confiable</b>: sin credenciales de clúster.</li>
-      <li><b>devsecops-agent</b> — los agentes que <b>sí</b> tienen credenciales. Namespace aparte a propósito.</li>
-      <li><b>Gobierno</b> (abajo) — qué es declarativo y quién lo aplica.</li>
+      <li><b>Plataforma</b> — registry, LLM, MCP</li>
+      <li><b>devsecops-duel</b> — carga <b>no confiable</b>, sin credenciales</li>
+      <li><b>devsecops-agent</b> — los agentes que <b>sí</b> las tienen</li>
+      <li><b>Gobierno</b> — Argo CD y la admisión</li>
     </ul>
-    <h3>Dónde actúa cada agente</h3>
-    <p>El <b style="color:var(--red)">rojo</b> es un <i>step</i> dentro de <code>gate-blue</code>.
-    El <b style="color:var(--blue)">azul</b> es un servicio aparte: el ataque tiene que cruzar
-    una frontera de red real. Los dos <b style="color:var(--purple)">agentes con LLM+MCP</b>
-    viven en el otro namespace y <b>solo informan</b>.</p>
-    <div class="note">La separación no es estética. El step del rojo no tiene token de API
-    ni salida a internet, y por NetworkPolicy solo puede hablar con el azul.</div>
     <h3>El punto de la charla</h3>
-    <div class="note crit">En el acto 3 el azul <b>aprueba</b>, la firma <b>verifica</b> y el
-    agente <b>tiene credencial</b>. Y el despliegue no entra: lo frena la <b>admisión</b>,
-    no el modelo.</div>
-    <p class="hint">Clic en cualquier caja para ver sus steps, sus Results y por qué está
-    diseñada así. Usa «Camino del ataque» para seguir el acto 3.</p>
+    <div class="note crit">El azul <b>aprueba</b>, la firma <b>verifica</b>, el agente
+    <b>tiene credencial</b>. Y no entra: lo frena la <b>admisión</b>, no el modelo.</div>
+    <p class="hint">Clic en cualquier caja para el detalle.</p>
   `);
 }
 
@@ -741,27 +906,17 @@ function showStart(){
     <h2 style="color:#ff8d85">Empieza aquí — se abre un PR</h2>
     <div><span class="tag">el disparador</span><span class="tag">PipelineRun</span></div>
     <h3>Qué pasa</h3>
-    <p>Alguien abre un pull request. Ese PR trae <b>código que tú no controlas</b>
-    y dispara un <code>PipelineRun</code> que recorre las 9 etapas de izquierda a derecha.</p>
-    <h3>¿Y el git clone?</h3>
-    <p>No hay task de clone. La fuente llega por <b>ConfigMap</b>
-    (<code>sample-app-src</code> y <code>duel-sast-input</code>), y un step la
-    materializa en el workspace dentro de <code>sast</code> y de <code>build</code>.</p>
-    <div class="note">Se hizo así para que la demo sea <b>reproducible y sin red</b>:
-    cada acto es un contenido distinto del ConfigMap, no una rama que haya que
-    clonar. El pipeline no depende de que GitHub responda el día de la charla.</div>
-    <h3>Por qué importa</h3>
-    <div class="note">Este es el modelo de amenaza realista: no hace falta que nadie
-    entre a tu clúster. Basta con que <b>tu CI ejecute lo que llega en un PR</b>.</div>
+    <p>Un PR trae <b>código que no controlas</b> y dispara el <code>PipelineRun</code>.</p>
+    <div class="note">No hace falta que nadie entre a tu clúster.
+    Basta con que <b>tu CI ejecute lo que llega en un PR</b>.</div>
     <h3>Los cuatro actos</h3>
     <ul>
-      <li><b>Acto 1</b> — PR malicioso obvio → el azul lo rechaza</li>
-      <li><b>Acto 2</b> — inyección indirecta en una dependencia</li>
-      <li><b>Acto 3</b> — la nota que gana el gate… y la admisión lo frena</li>
-      <li><b>Acto 4</b> — el revisor endurecido</li>
+      <li><b>1</b> — PR malicioso obvio → lo rechaza</li>
+      <li><b>2</b> — inyección en una dependencia</li>
+      <li><b>3</b> — gana el gate… y la admisión lo frena</li>
+      <li><b>4</b> — el revisor endurecido</li>
     </ul>
-    <p class="hint">Cada acto es un PipelineRun distinto: mismo pipeline, distinto PR.
-    Sigue la flecha roja hacia <b>1 · sast</b>.</p>
+    <p class="hint">Mismo pipeline, distinto PR.</p>
   `);
   showAll();
 }
@@ -936,7 +1091,23 @@ d3.select('#reset').on('click',()=>{
   d3.selectAll('.stage').classed('sel',false); showAll(); intro();
 });
 
-showAll();   // arranca sin dependencias: primero el flujo, el detalle bajo demanda
+// Panel plegable: el diagrama es lo primero; el texto, bajo demanda.
+const wrapEl = document.querySelector('.wrap');
+const btnPanel = d3.select('#togglePanel');
+function setPanel(open){
+  wrapEl.classList.toggle('collapsed', !open);
+  btnPanel.text(open ? 'Ocultar panel' : 'Mostrar panel');
+}
+btnPanel.on('click', ()=> setPanel(wrapEl.classList.contains('collapsed')));
+// Abrir el panel automáticamente al pedir detalle de algo.
+const _openOnDetail = fn => (...a) => { setPanel(true); return fn(...a); };
+selectStage = _openOnDetail(selectStage);
+showAgent   = _openOnDetail(showAgent);
+showPlatform= _openOnDetail(showPlatform);
+showStart   = _openOnDetail(showStart);
+
+setPanel(false);   // arranca plegado: primero el mapa completo
+showAll();   // y sin dependencias: el detalle, bajo demanda
 intro();
 </script>
 </body>
