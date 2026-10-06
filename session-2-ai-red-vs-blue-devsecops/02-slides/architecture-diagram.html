@@ -43,11 +43,12 @@
   .sub{margin-top:5px;font-size:12.5px;color:var(--dim)}
   .wrap{display:flex;gap:0;align-items:stretch;min-height:calc(100vh - 128px)}
   .canvas{flex:1;min-width:0;overflow:auto;padding:14px 10px 30px}
-  aside{width:362px;flex:none;border-left:1px solid var(--line);
+  aside{width:330px;flex:none;border-left:1px solid var(--line);
     background:var(--panel);padding:16px 18px 30px;overflow:auto}
-  /* El SVG escala al ancho disponible (el panel lateral se lleva 362px). Sin
-     esto la última etapa — deploy-gitops, el desenlace — queda fuera de vista. */
-  svg{display:block;margin:0 auto;width:100%;height:auto;max-width:1740px}
+  /* El SVG escala al ancho disponible pero nunca por debajo de 1500px: por
+     debajo de eso las etiquetas se vuelven ilegibles, y es preferible que el
+     lienzo se desplace en horizontal a que el texto no se lea. */
+  svg{display:block;margin:0 auto;width:100%;min-width:1500px;height:auto}
   text{font-family:inherit;-webkit-font-smoothing:antialiased}
   .mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace}
   .stage{cursor:pointer}
@@ -133,7 +134,80 @@
   <span class="mono">kubectl get applications -n argocd</span>
 </footer>
 
-<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+/* ===========================================================================
+   Micro-shim con la API de selección de D3 que este diagrama usa.
+
+   POR QUÉ NO EL CDN: el archivo debe abrirse con doble clic (file://) y
+   funcionar SIN RED — el día de la charla el wifi puede fallar y el diagrama
+   tiene que verse igual. De D3 aquí solo se usan select/selectAll y nueve
+   métodos encadenables (ni escalas, ni ejes, ni layouts), así que traer 280 KB
+   por eso no se justifica. Esto implementa exactamente esos métodos.
+   =========================================================================== */
+const d3 = (() => {
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  // Etiquetas que deben crearse en el namespace SVG (si no, no se renderizan).
+  const SVG_TAGS = new Set(['svg','g','rect','text','tspan','path','circle',
+    'line','defs','marker','polyline','polygon','ellipse','use']);
+
+  class Sel {
+    constructor(nodes){ this._ = nodes; }
+    node(){ return this._[0] ?? null; }
+    each(fn){ this._.forEach((n,i)=>fn.call(n,n.__data__,i)); return this; }
+
+    select(sel){
+      return new Sel(this._.map(n=>n.querySelector(sel)).filter(Boolean));
+    }
+    selectAll(sel){
+      return new Sel(this._.flatMap(n=>[...n.querySelectorAll(sel)]));
+    }
+    append(tag){
+      const made = this._.map(n=>{
+        const el = SVG_TAGS.has(tag)
+          ? document.createElementNS(SVG_NS, tag)
+          : document.createElement(tag);
+        n.appendChild(el); return el;
+      });
+      return new Sel(made);
+    }
+    // attr/style/text/html: con 1 argumento leen del primer nodo; con 2 escriben
+    // en todos. Un valor null elimina el atributo (igual que D3).
+    attr(k,v){
+      if(v === undefined) return this._[0]?.getAttribute(k);
+      this._.forEach(n => v === null ? n.removeAttribute(k)
+                                     : n.setAttribute(k, v));
+      return this;
+    }
+    style(k,v){
+      if(v === undefined) return this._[0] && getComputedStyle(this._[0])[k];
+      this._.forEach(n=>n.style.setProperty(k, v)); return this;
+    }
+    text(v){
+      if(v === undefined) return this._[0]?.textContent ?? '';
+      this._.forEach(n=>n.textContent = v === null ? '' : v);
+      return this;
+    }
+    html(v){
+      if(v === undefined) return this._[0]?.innerHTML ?? '';
+      this._.forEach(n=>n.innerHTML = v); return this;
+    }
+    classed(c,on){
+      if(on === undefined) return !!this._[0]?.classList.contains(c);
+      this._.forEach(n=>n.classList.toggle(c, !!on)); return this;
+    }
+    on(evt,fn){ this._.forEach(n=>n.addEventListener(evt,fn)); return this; }
+  }
+
+  const toNodes = s => typeof s === 'string'
+    ? [...document.querySelectorAll(s)]
+    : (s ? [s] : []);
+
+  return {
+    select:    s => new Sel(toNodes(s).slice(0,1)),
+    selectAll: s => new Sel(toNodes(s)),
+  };
+})();
+</script>
 <script>
 /* ===========================================================================
    DATOS — el layout es dato, no resultado de un solo motor de fuerzas.
@@ -300,14 +374,16 @@ const PLATFORM = [
 /* ===========================================================================
    LAYOUT — geometría explícita
    =========================================================================== */
-// El ancho se deriva de la geometría (9 columnas + márgenes), no se fija a ojo:
-// así añadir una etapa no deja nada cortado fuera del viewBox.
-const COL_W = 158, COL_GAP = 14, PIPE_X = 86, PIPE_Y = 292;
+// El ancho se deriva de la geometría (bloque de arranque + 9 columnas + márgenes),
+// no se fija a ojo: así añadir una etapa no deja nada cortado fuera del viewBox.
+const COL_W = 158, COL_GAP = 30, PIPE_Y = 316;
+const START_W = 196;                 // el bloque «aquí empieza todo»
+const PIPE_X = 60 + START_W + 56;    // las etapas arrancan tras el disparador
 const W = PIPE_X + 9 * (COL_W + COL_GAP) - COL_GAP + 120;
-const BOX_H = 76;
+const BOX_H = 82;
 const colX = c => PIPE_X + c * (COL_W + COL_GAP);
 const colCX = c => colX(c) + COL_W / 2;
-const H = 1026;
+const H = 940;
 
 // Solo viewBox: el ancho/alto reales los pone el CSS para que escale al panel.
 const svg = d3.select('#d').attr('viewBox', `0 0 ${W} ${H}`)
@@ -323,6 +399,12 @@ const defs = svg.append('defs');
     .attr('orient','auto-start-reverse')
     .append('path').attr('d','M0,0L10,5L0,10z').attr('fill',c);
 });
+// Cabeza GRANDE para el flujo principal del pipeline: a tamaño de pantalla las
+// flechas finas desaparecían y no se veía por dónde empieza ni hacia dónde va.
+defs.append('marker').attr('id','aflow').attr('viewBox','0 0 10 10')
+  .attr('refX',8.5).attr('refY',5).attr('markerWidth',5.2).attr('markerHeight',5.2)
+  .attr('orient','auto-start-reverse')
+  .append('path').attr('d','M0,0L10,5L0,10z').attr('fill','#9fb4cc');
 
 const gBands  = svg.append('g');
 const gLinks  = svg.append('g');
@@ -356,17 +438,19 @@ function band(x,y,w,h,label,color,sub){
 }
 
 /* --- bandas (namespaces / zonas) --------------------------------------- */
-const PIPE_W = colX(8)+COL_W - PIPE_X + 26;
-band(PIPE_X-26, PIPE_Y-124, PIPE_W, BOX_H+218,
+// Las bandas arrancan en el bloque «empieza aquí» (x=60), no en la etapa 1.
+const BAND_X = 60, BAND_W = colX(8)+COL_W + 26 - BAND_X;
+const PIPE_W = BAND_W;
+band(BAND_X, PIPE_Y-124, PIPE_W, BOX_H+218,
   'NAMESPACE  devsecops-duel   ·   el pipeline y el agente azul', '#8b98a5',
   'carga no confiable · sin credenciales de clúster');
-band(PIPE_X-26, 596, PIPE_W, 150,
+band(BAND_X, 560, PIPE_W, 150,
   'NAMESPACE  devsecops-agent   ·   los agentes con credenciales', 'var(--purple)',
   'LLM + MCP + lectura de PipelineRuns + clave de Git');
-band(PIPE_X-26, 60, PIPE_W, 150,
+band(BAND_X, 60, PIPE_W, 150,
   'PLATAFORMA  ·  servicios del clúster', 'var(--teal)',
   'ninguno sale a internet');
-band(PIPE_X-26, 800, PIPE_W, 186,
+band(BAND_X, 742, PIPE_W, 182,
   'GOBIERNO  ·  qué es declarativo y quién lo aplica', 'var(--green)',
   'repo homelab-gitops → Argo CD → clúster');
 
@@ -390,11 +474,11 @@ PLATFORM.filter(p=>p.id!=='argocd').forEach((p,i)=>{
   const p = PLATFORM.find(x=>x.id==='argocd');
   const g = gNodes.append('g').attr('class','node plat lit')
     .attr('data-id','argocd').style('cursor','pointer');
-  g.append('rect').attr('x',PIPE_X+6).attr('y',836).attr('width',364).attr('height',66)
+  g.append('rect').attr('x',PIPE_X+6).attr('y',776).attr('width',364).attr('height',66)
     .attr('rx',9).attr('fill','#0f1d13').attr('stroke','var(--green)').attr('stroke-opacity',.65);
-  g.append('text').attr('x',PIPE_X+19).attr('y',861).attr('fill','#dfe9f2')
+  g.append('text').attr('x',PIPE_X+19).attr('y',801).attr('fill','#dfe9f2')
     .attr('font-size',13.5).attr('font-weight',650).text('Argo CD  ·  5 Applications');
-  g.append('text').attr('x',PIPE_X+19).attr('y',880).attr('fill','#6f8f78')
+  g.append('text').attr('x',PIPE_X+19).attr('y',820).attr('fill','#6f8f78')
     .attr('font-size',10.5).attr('font-family','ui-monospace,Menlo,monospace')
     .text('repo homelab-gitops  →  reconcilia el clúster');
   g.on('click',()=>showPlatform(p));
@@ -402,14 +486,14 @@ PLATFORM.filter(p=>p.id!=='argocd').forEach((p,i)=>{
   // lista de Applications
   const apps = ['…-pipeline','…-pipeline-runs','…-admission-policies','…-backstage-agent','…-sample-app'];
   apps.forEach((a,i)=>{
-    const x = PIPE_X+400 + (i%3)*296, y = 840 + Math.floor(i/3)*34;
+    const x = PIPE_X+400 + (i%3)*296, y = 780 + Math.floor(i/3)*34;
     const g2 = gNodes.append('g').attr('class','node lit').attr('data-id','argocd');
     g2.append('rect').attr('x',x).attr('y',y).attr('width',280).attr('height',26)
       .attr('rx',6).attr('fill','#0d1710').attr('stroke','#255233');
     g2.append('text').attr('x',x+10).attr('y',y+17.5).attr('fill','#9fc9ab')
       .attr('font-size',11).attr('font-family','ui-monospace,Menlo,monospace').text(a);
   });
-  gNodes.append('text').attr('x',PIPE_X+6).attr('y',934).attr('fill','#5c6773')
+  gNodes.append('text').attr('x',PIPE_X+6).attr('y',876).attr('fill','#5c6773')
     .attr('font-size',11.5)
     .text('El único camino de despliegue válido: un humano aprueba en Git y Argo CD sincroniza. El agente no puede hacerse pasar por Argo CD.');
 }
@@ -427,11 +511,21 @@ STAGES.forEach(s=>{
     .attr('x',colX(s.col)).attr('y',PIPE_Y).attr('width',COL_W).attr('height',BOX_H)
     .attr('rx',9).attr('fill',KIND_FILL[s.kind]).attr('stroke',KIND_STROKE[s.kind])
     .attr('stroke-width',1.4);
-  g.append('text').attr('x',colX(s.col)+12).attr('y',PIPE_Y+22)
-    .attr('fill','#e6edf3').attr('font-size',12.5).attr('font-weight',650).text(s.n);
-  g.append('text').attr('x',colX(s.col)+12).attr('y',PIPE_Y+39)
+  // El número de orden va en su propia píldora: a tamaño de pantalla es lo que
+  // deja claro que son pasos de una secuencia y no cajas sueltas.
+  const num = s.n.split(' ')[0];
+  g.append('rect').attr('x',colX(s.col)+10).attr('y',PIPE_Y+9)
+    .attr('width',num.length>1?26:19).attr('height',19).attr('rx',5)
+    .attr('fill','#0c1117').attr('stroke',KIND_STROKE[s.kind]);
+  g.append('text').attr('x',colX(s.col)+10+(num.length>1?13:9.5)).attr('y',PIPE_Y+22.5)
+    .attr('text-anchor','middle').attr('fill','#c6d3e0')
+    .attr('font-size',11.5).attr('font-weight',700).text(num);
+  g.append('text').attr('x',colX(s.col)+(num.length>1?44:37)).attr('y',PIPE_Y+23)
+    .attr('fill','#e6edf3').attr('font-size',12.5).attr('font-weight',650)
+    .text(s.n.replace(/^[\w\d]+\s·\s/,''));
+  g.append('text').attr('x',colX(s.col)+12).attr('y',PIPE_Y+44)
     .attr('fill','#8b98a5').attr('font-size',10.5).text(s.sub);
-  g.append('text').attr('x',colX(s.col)+12).attr('y',PIPE_Y+60)
+  g.append('text').attr('x',colX(s.col)+12).attr('y',PIPE_Y+65)
     .attr('fill', s.verdict==='rechazado' ? '#d29922'
          : s.verdict==='el corazón' ? '#f85149' : '#6b7a8c')
     .attr('font-size',10).attr('font-weight',600)
@@ -439,21 +533,62 @@ STAGES.forEach(s=>{
   g.on('click',()=>{ selectStage(s.id); });
 });
 
-// flechas runAfter entre etapas consecutivas
+// Flechas runAfter entre etapas: gruesas y bien visibles. Son la espina dorsal
+// del diagrama — si no se ven, no se entiende que esto es una secuencia.
 for(let i=0;i<STAGES.length-1;i++){
   const a=STAGES[i], b=STAGES[i+1];
-  gLinks.append('path').attr('class','link lit')
+  gLinks.append('path').attr('class','link flow lit')
     .attr('data-from',a.id).attr('data-to',b.id)
-    .attr('d',`M${colX(a.col)+COL_W},${PIPE_Y+BOX_H/2}H${colX(b.col)}`)
-    .attr('stroke','#54657a').attr('stroke-width',1.5).attr('fill','none')
-    .attr('marker-end','url(#a)');
+    .attr('d',`M${colX(a.col)+COL_W},${PIPE_Y+BOX_H/2}H${colX(b.col)-3}`)
+    .attr('stroke','#9fb4cc').attr('stroke-width',3.4).attr('fill','none')
+    .attr('stroke-linecap','round')
+    .attr('marker-end','url(#aflow)');
 }
 // el when de deploy-gitops
 gLinks.append('text').attr('class','lit')
-  .attr('x',colCX(8)).attr('y',PIPE_Y-10).attr('text-anchor','middle')
+  .attr('x',colCX(8)).attr('y',PIPE_Y-14).attr('text-anchor','middle')
   .attr('fill','#d29922').attr('font-size',10)
   .attr('font-family','ui-monospace,Menlo,monospace')
   .text('when: decision==APPROVE && verify==OK');
+
+/* --- EMPIEZA AQUÍ: el disparador ---------------------------------------
+   Sin esto el diagrama eran nueve cajas iguales sin punto de entrada.    */
+{
+  const sx = 60, sy = PIPE_Y - 30, sh = BOX_H + 60;
+  const g = gNodes.append('g').attr('class','node lit')
+    .attr('data-id','start').style('cursor','pointer');
+
+  g.append('rect').attr('x',sx).attr('y',sy).attr('width',START_W).attr('height',sh)
+    .attr('rx',10).attr('fill','#2a1518').attr('stroke','#c23b45').attr('stroke-width',2.4);
+
+  g.append('text').attr('x',sx+16).attr('y',sy+26).attr('fill','#ff8d85')
+    .attr('font-size',11).attr('font-weight',700).attr('letter-spacing','1.3px')
+    .text('EMPIEZA AQUÍ');
+  g.append('text').attr('x',sx+16).attr('y',sy+52).attr('fill','#e6edf3')
+    .attr('font-size',15).attr('font-weight',700).text('Se abre un PR');
+  const t = g.append('text').attr('x',sx+16).attr('y',sy+74).attr('fill','#d9b6b4')
+    .attr('font-size',11.5);
+  t.text('Código que no controlas entra a tu CI. Eso dispara el PipelineRun.');
+  wrap(t, START_W-32, 14);
+  g.append('text').attr('x',sx+16).attr('y',sy+sh-12).attr('fill','#9c7b84')
+    .attr('font-size',10).attr('font-family','ui-monospace,Menlo,monospace')
+    .text('PipelineRun → 9 etapas');
+
+  g.on('click',()=>showStart());
+
+  // Flecha de arranque: gruesa, roja, imposible de no ver.
+  gLinks.append('path').attr('class','link flow lit')
+    .attr('d',`M${sx+START_W},${PIPE_Y+BOX_H/2}H${colX(0)-3}`)
+    .attr('stroke','#c23b45').attr('stroke-width',3.8).attr('fill','none')
+    .attr('stroke-linecap','round').attr('marker-end','url(#ared)');
+}
+
+// Rótulo del flujo, sobre la banda de etapas.
+gLinks.append('text').attr('class','lit')
+  .attr('x',colX(0)).attr('y',PIPE_Y-44)
+  .attr('fill','#7d8da0').attr('font-size',11).attr('font-weight',650)
+  .attr('letter-spacing','1.4px')
+  .text('EL PIPELINE CORRE DE IZQUIERDA A DERECHA  →  9 etapas encadenadas con runAfter');
 
 /* --- agentes ----------------------------------------------------------- */
 // rojo y azul dentro del namespace del duelo, bajo gate-blue
@@ -480,9 +615,9 @@ agentBox('red', colX(6)-10, PIPE_Y-92, 242, 72, '#2a1518', '#8c3a42');
 agentBox('blue', colX(6)-10, PIPE_Y+BOX_H+18, 230, 72, '#15202e', '#2f5b85');
 
 // agente de remediación — debajo de la etapa remediation, en su namespace
-agentBox('remediation', colX(4)-38, 636, 266, 86, '#1d1630', '#5b4387');
+agentBox('remediation', colX(4)-38, 600, 266, 86, '#1d1630', '#5b4387');
 // agente de aprobación — a la derecha, sin etapa (observa todas)
-agentBox('approval', colX(7)-30, 636, 290, 86, '#1d1630', '#5b4387');
+agentBox('approval', colX(7)-30, 600, 290, 86, '#1d1630', '#5b4387');
 
 /* --- enlaces agente ↔ etapa / plataforma -------------------------------- */
 function link(d, color, marker, dash, cls){
@@ -499,20 +634,20 @@ gLinks.append('text').attr('class','lit').attr('x',colX(6)+88).attr('y',PIPE_Y+B
   .attr('font-family','ui-monospace,Menlo,monospace').text('A2A');
 
 // remediation (etapa) → agente de remediación
-link(`M${colCX(4)},${PIPE_Y+BOX_H}V${610}H${colX(4)+95}V636`, '#bc8cff','apurple','4 3');
+link(`M${colCX(4)},${PIPE_Y+BOX_H}V${572}H${colX(4)+95}V600`, '#bc8cff','apurple','4 3');
 gLinks.append('text').attr('class','lit').attr('x',colCX(4)+8).attr('y',PIPE_Y+BOX_H+30)
   .attr('fill','#bc8cff').attr('font-size',10)
   .attr('font-family','ui-monospace,Menlo,monospace').text('A2A · solo «advise» (8081)');
 
 // agente de aprobación lee PipelineRuns (de toda la banda del pipeline)
-link(`M${colX(8)+COL_W-30},${PIPE_Y+BOX_H}V600H${colX(7)+115}V636`, '#bc8cff','apurple','4 3');
-gLinks.append('text').attr('class','lit').attr('x',colX(8)-6).attr('y',592)
+link(`M${colX(8)+COL_W-30},${PIPE_Y+BOX_H}V548H${colX(7)+115}V600`, '#bc8cff','apurple','4 3');
+gLinks.append('text').attr('class','lit').attr('x',colX(8)-6).attr('y',540)
   .attr('fill','#bc8cff').attr('font-size',10)
   .attr('font-family','ui-monospace,Menlo,monospace').text('lee PipelineRuns (RBAC solo lectura)');
 
 // agentes → vLLM y MCP (hacia la banda de plataforma)
-link(`M${colX(4)+95},636V560H${platX[1]+125}V158`, '#39c5bb','ateal','3 3');
-link(`M${colX(7)+115},636V572H${platX[2]+137}V158`, '#39c5bb','ateal','3 3');
+link(`M${colX(4)+95},600V524H${platX[1]+125}V158`, '#39c5bb','ateal','3 3');
+link(`M${colX(7)+115},600V536H${platX[2]+137}V158`, '#39c5bb','ateal','3 3');
 // azul → vLLM (modo llm)
 link(`M${colX(6)+200},${PIPE_Y+BOX_H+18}V${PIPE_Y+BOX_H+4}H${colX(6)+248}V200H${platX[1]+190}V158`,
   '#39c5bb','ateal','3 3');
@@ -528,8 +663,8 @@ gLinks.append('text').attr('class','lit').attr('x',colCX(8)+10).attr('y',244)
   .text('RECHAZADO ×2');
 
 // Argo CD → pipeline / agentes / policies (gobierna)
-link(`M${PIPE_X+188},836V790H${colCX(2)}V${PIPE_Y+BOX_H}`, '#3fb950','agreen','4 3');
-link(`M${PIPE_X+188},836V790H${colX(4)+95}V722`, '#3fb950','agreen','4 3');
+link(`M${PIPE_X+188},776V730H${colCX(2)}V${PIPE_Y+BOX_H}`, '#3fb950','agreen','4 3');
+link(`M${PIPE_X+188},776V730H${colX(4)+95}V686`, '#3fb950','agreen','4 3');
 
 /* ===========================================================================
    PANEL
@@ -563,6 +698,30 @@ function intro(){
     <p class="hint">Clic en cualquier caja para ver sus steps, sus Results y por qué está
     diseñada así. Usa «Camino del ataque» para seguir el acto 3.</p>
   `);
+}
+
+function showStart(){
+  d3.selectAll('.stage').classed('sel',false);
+  panel.html(`
+    <h2 style="color:#ff8d85">Empieza aquí — se abre un PR</h2>
+    <div><span class="tag">el disparador</span><span class="tag">PipelineRun</span></div>
+    <h3>Qué pasa</h3>
+    <p>Alguien abre un pull request. Ese PR trae <b>código que tú no controlas</b>
+    y dispara un <code>PipelineRun</code> que recorre las 9 etapas de izquierda a derecha.</p>
+    <h3>Por qué importa</h3>
+    <div class="note">Este es el modelo de amenaza realista: no hace falta que nadie
+    entre a tu clúster. Basta con que <b>tu CI ejecute lo que llega en un PR</b>.</div>
+    <h3>Los cuatro actos</h3>
+    <ul>
+      <li><b>Acto 1</b> — PR malicioso obvio → el azul lo rechaza</li>
+      <li><b>Acto 2</b> — inyección indirecta en una dependencia</li>
+      <li><b>Acto 3</b> — la nota que gana el gate… y la admisión lo frena</li>
+      <li><b>Acto 4</b> — el revisor endurecido</li>
+    </ul>
+    <p class="hint">Cada acto es un PipelineRun distinto: mismo pipeline, distinto PR.
+    Sigue la flecha roja hacia <b>1 · sast</b>.</p>
+  `);
+  showAll();
 }
 
 function selectStage(id){
