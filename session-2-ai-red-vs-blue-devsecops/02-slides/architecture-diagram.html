@@ -672,6 +672,10 @@ function route(a, b, opts){
   if(vert(fs) && vert(ts)){
     if(Math.abs(x1 - x2) < 1) return 'M' + x1 + ',' + y1 + 'V' + y2;
     const ly = opts.lane !== undefined ? opts.lane : (y1 + y2) / 2;
+    // `col` fuerza la X del tramo vertical largo, para bajar por un pasillo
+    // libre en vez de atravesar la fila de etapas.
+    if(opts.col !== undefined)
+      return 'M' + x1 + ',' + y1 + 'V' + ly + 'H' + opts.col + 'V' + y2 + 'H' + x2;
     return 'M' + x1 + ',' + y1 + 'V' + ly + 'H' + x2 + 'V' + y2;
   }
   if(!vert(fs) && vert(ts))  return 'M' + x1 + ',' + y1 + 'H' + x2 + 'V' + y2;
@@ -952,7 +956,9 @@ agentBox('approval', underStage('verify'), 600, AG_W, 84, '#1d1630', '#5b4387');
    selecciona uno de sus dos extremos. Cada enlace declara a qué nodos
    pertenece (`owners`) para poder encenderse de forma selectiva.          */
 const DEPS = [];
-function link(d, color, marker, dash, owners, label){
+/* `ends` son los DOS extremos del enlace: [[idsA],[idsB]]. Un enlace solo se
+   enciende si hay algo iluminado en ambos lados. */
+function link(d, color, marker, dash, owners, label, ends){
   const path = gLinks.append('path').attr('class','link dep')
     .attr('d',d).attr('stroke',color).attr('stroke-width',1.8).attr('fill','none')
     .attr('stroke-dasharray',dash||null).attr('marker-end',`url(#${marker})`)
@@ -965,7 +971,7 @@ function link(d, color, marker, dash, owners, label){
       .attr('font-family','ui-monospace,Menlo,monospace')
       .attr('opacity',0).text(label.t);
   }
-  DEPS.push({ path, text, owners: new Set(owners) });
+  DEPS.push({ path, text, owners: new Set(owners), ends: ends || [owners, owners] });
 }
 
 // Carriles libres: alturas por las que las flechas viajan en horizontal sin
@@ -973,65 +979,82 @@ function link(d, color, marker, dash, owners, label){
 const LANE_TOP    = 240;                   // entre la plataforma y las etapas
 const LANE_UNDER  = PIPE_Y + BOX_H + 136;  // bajo la fila de etapas
 const LANE_AGENTS = 572;                   // sobre la franja de los agentes
+// Pasillo vertical libre, entre el bloque de arranque y la primera etapa.
+const AISLE       = colX(0) - COL_GAP/2;
 
 // --- El duelo ------------------------------------------------------------
 link(route('red','gate-blue',{from:'bottom',to:'top'}), '#f85149','ared',null,
-  ['red','gate-blue']);
+  ['red','gate-blue'], null, [['red'],['gate-blue']]);
 link(route('gate-blue','blue',{from:'bottom',to:'top'}), '#58a6ff','ablue',null,
   ['blue','gate-blue'],
-  {x:BOX['gate-blue'].cx+10, y:PIPE_Y+BOX_H+14, t:'le manda el PR'});
+  {x:BOX['gate-blue'].cx+10, y:PIPE_Y+BOX_H+14, t:'le manda el PR'},
+  [['gate-blue'],['blue']]);
 
 // --- Las etapas que consultan a un agente --------------------------------
 link(route('remediation','remediation_ag',{from:'bottom',to:'top',lane:LANE_AGENTS}),
   '#bc8cff','apurple','4 3', ['remediation'],
-  {x:BOX['remediation'].cx+10, y:PIPE_Y+BOX_H+26, t:'pide consejo'});
+  {x:BOX['remediation'].cx+10, y:PIPE_Y+BOX_H+26, t:'pide consejo'},
+  [['remediation'],['remediation']]);
 
 link(route('deploy-gitops','approval',{from:'bottom',to:'top',lane:LANE_AGENTS}),
   '#bc8cff','apurple','4 3', ['approval'],
-  {x:BOX['approval'].cx+16, y:LANE_AGENTS-10, t:'revisa cada ejecución'});
+  {x:BOX['approval'].cx+16, y:LANE_AGENTS-10, t:'revisa cada ejecución'},
+  [['approval'],['approval','deploy-gitops']]);
 
 // --- Quién usa el modelo de IA y el catálogo de políticas ----------------
 link(route('remediation_ag','vllm',{from:'top',to:'bottom',lane:LANE_TOP}),
-  '#39c5bb','ateal','3 3', ['remediation','vllm','mcp']);
+  '#39c5bb','ateal','3 3', ['remediation','vllm','mcp'], null,
+  [['remediation'],['vllm','mcp']]);
 link(route('approval','mcp',{from:'top',to:'bottom',lane:LANE_TOP}),
-  '#39c5bb','ateal','3 3', ['approval','vllm','mcp']);
+  '#39c5bb','ateal','3 3', ['approval','vllm','mcp'], null,
+  [['approval'],['vllm','mcp']]);
 link(route('blue','vllm',{from:'top',to:'bottom',lane:LANE_TOP}),
-  '#39c5bb','ateal','3 3', ['blue','vllm']);
+  '#39c5bb','ateal','3 3', ['blue','vllm'], null, [['blue'],['vllm']]);
 
 // --- Las etapas y el almacén de imágenes ---------------------------------
-link(route('build','zot',{from:'top',to:'bottom',lane:LANE_TOP}),
-  '#39c5bb','ateal','3 3', ['build','zot']);
-link(route('sign','zot',{from:'bottom',to:'bottom',lane:LANE_UNDER}),
-  '#39c5bb','ateal','3 3', ['sign','verify','trivy-scan','zot']);
+link(route('build','zot',{from:'bottom',to:'bottom',lane:LANE_UNDER,col:AISLE}),
+  '#39c5bb','ateal','3 3', ['build','zot'], null, [['build'],['zot']]);
+// Cada etapa que habla con el almacén tiene SU propia flecha: compartir una
+// sola hacía que al elegir una etapa la línea pareciera nacer en otra.
+link(route('trivy-scan','zot',{from:'bottom',to:'bottom',lane:LANE_UNDER+16,col:AISLE}),
+  '#39c5bb','ateal','3 3', ['trivy-scan','zot'], null, [['trivy-scan'],['zot']]);
+link(route('sign','zot',{from:'bottom',to:'bottom',lane:LANE_UNDER+32,col:AISLE}),
+  '#39c5bb','ateal','3 3', ['sign','zot'], null, [['sign'],['zot']]);
+link(route('verify','zot',{from:'bottom',to:'bottom',lane:LANE_UNDER+48,col:AISLE}),
+  '#39c5bb','ateal','3 3', ['verify','zot'], null, [['verify'],['zot']]);
 
 // --- El intento de despliegue y su rechazo -------------------------------
 link(route('deploy-gitops','kyverno',{from:'top',to:'bottom',lane:LANE_TOP}),
   '#d29922','aamber',null, ['deploy-gitops','kyverno'],
   {x:BOX['kyverno'].x+BOX['kyverno'].w+16, y:LANE_TOP-8,
-   t:'RECHAZADO ×2', bold:true});
+   t:'RECHAZADO ×2', bold:true}, [['deploy-gitops'],['kyverno']]);
 
 // --- El ciclo: agente → Backstage → persona → Git → Argo CD --------------
 link(route('remediation_ag','backstage',{from:'left',to:'right'}),
   '#bc8cff','apurple','4 3', ['remediation','backstage'],
   {x:BOX['backstage'].x+BOX['backstage'].w+14, y:BOX['backstage'].cy-10,
-   t:'los agentes publican aquí su informe'});
+   t:'los agentes publican aquí su informe'}, [['remediation'],['backstage']]);
 link(route('approval','backstage',{from:'bottom',to:'bottom',
   lane:BOX['backstage'].y+BOX['backstage'].h+24}),
-  '#bc8cff','apurple','4 3', ['approval','backstage']);
+  '#bc8cff','apurple','4 3', ['approval','backstage'], null,
+  [['approval'],['backstage']]);
 
 link(route('backstage','argocd',{from:'bottom',to:'top'}),
   '#3fb950','agreen',null, ['backstage','argocd'],
   {x:BOX['backstage'].cx+12, y:BOX['backstage'].y+BOX['backstage'].h+32,
-   t:'la persona confirma → va a Git', bold:true});
+   t:'la persona confirma → va a Git', bold:true}, [['backstage'],['argocd']]);
 
 link(route('argocd','remediation_ag',{from:'top',to:'bottom',lane:748}),
-  '#3fb950','agreen','4 3', ['argocd']);
+  '#3fb950','agreen','4 3', ['argocd'], null, [['argocd'],['argocd']]);
 
 /* Enciende solo las dependencias que tocan alguno de los nodos dados. */
+/* Un enlace se enciende solo si AMBOS extremos están iluminados. Con `some()`
+   bastaba con que coincidiera uno, así que al elegir `build` también se
+   encendía la flecha de `sign`, porque las dos apuntan al almacén. */
 function showDeps(ids){
   const want = new Set(ids);
   DEPS.forEach(d => {
-    const on = [...d.owners].some(o => want.has(o));
+    const on = d.ends.every(e => e.some(o => want.has(o)));
     d.path.attr('opacity', on ? 1 : 0);
     if(d.text) d.text.attr('opacity', on ? 1 : 0);
   });
