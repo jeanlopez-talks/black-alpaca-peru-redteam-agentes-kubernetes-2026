@@ -640,6 +640,47 @@ defs.append('marker').attr('id','aflow').attr('viewBox','0 0 10 10')
   .attr('orient','auto-start-reverse')
   .append('path').attr('d','M0,0L10,5L0,10z').attr('fill','#9fb4cc');
 
+
+/* --- Registro de cajas y enrutado de flechas -----------------------------
+   BOX guarda el rectángulo real de cada nodo y route() decide por qué lado
+   sale y entra cada flecha. Antes las rutas eran coordenadas escritas a mano:
+   al mover una caja, la flecha salía por el borde equivocado o cruzaba otras. */
+const BOX = {};
+const reg = (id,x,y,w,h) => { BOX[id] = {x,y,w,h,cx:x+w/2,cy:y+h/2}; };
+
+const SIDE = {
+  top:    b => [b.cx, b.y],
+  bottom: b => [b.cx, b.y + b.h],
+  left:   b => [b.x, b.cy],
+  right:  b => [b.x + b.w, b.cy],
+};
+
+/* Ruta ortogonal entre dos cajas. `lane` fija la coordenada del tramo
+   horizontal (un carril libre), para no atravesar la fila de etapas. */
+function route(a, b, opts){
+  opts = opts || {};
+  const A = BOX[a], B = BOX[b];
+  if(!A || !B){ console.warn('route: falta', a, b); return 'M0,0'; }
+  const fs = opts.from || (B.cy < A.y ? 'top' : B.cy > A.y+A.h ? 'bottom'
+                          : B.cx > A.cx ? 'right' : 'left');
+  const ts = opts.to   || (A.cy < B.y ? 'top' : A.cy > B.y+B.h ? 'bottom'
+                          : A.cx > B.cx ? 'right' : 'left');
+  const s0 = SIDE[fs](A), s1 = SIDE[ts](B);
+  const x1 = s0[0], y1 = s0[1], x2 = s1[0], y2 = s1[1];
+  const vert = t => t === 'top' || t === 'bottom';
+
+  if(vert(fs) && vert(ts)){
+    if(Math.abs(x1 - x2) < 1) return 'M' + x1 + ',' + y1 + 'V' + y2;
+    const ly = opts.lane !== undefined ? opts.lane : (y1 + y2) / 2;
+    return 'M' + x1 + ',' + y1 + 'V' + ly + 'H' + x2 + 'V' + y2;
+  }
+  if(!vert(fs) && vert(ts))  return 'M' + x1 + ',' + y1 + 'H' + x2 + 'V' + y2;
+  if(vert(fs) && !vert(ts))  return 'M' + x1 + ',' + y1 + 'V' + y2 + 'H' + x2;
+  if(Math.abs(y1 - y2) < 1)  return 'M' + x1 + ',' + y1 + 'H' + x2;
+  const lx = (x1 + x2) / 2;
+  return 'M' + x1 + ',' + y1 + 'H' + lx + 'V' + y2 + 'H' + x2;
+}
+
 const gBands  = svg.append('g');
 const gLinks  = svg.append('g');
 const gNodes  = svg.append('g');
@@ -702,6 +743,7 @@ PLATFORM.filter(p=>p.id!=='argocd').forEach((p,i)=>{
     .attr('font-size',13).attr('font-weight',600).text(p.n);
   g.append('text').attr('x',platX[i]+13).attr('y',139).attr('fill','#6f8696')
     .attr('font-size',10.5).attr('font-family','ui-monospace,Menlo,monospace').text(p.sub);
+  reg(p.id, platX[i], 96, platW[i], 62);
   g.on('click',()=>showPlatform(p));
 });
 
@@ -717,6 +759,7 @@ PLATFORM.filter(p=>p.id!=='argocd').forEach((p,i)=>{
   g.append('text').attr('x',PIPE_X+19).attr('y',820).attr('fill','#6f8f78')
     .attr('font-size',10.5).attr('font-family','ui-monospace,Menlo,monospace')
     .text('mantiene el clúster igual a lo que dice Git');
+  reg('argocd', PIPE_X+6, 776, 364, 66);
   g.on('click',()=>showPlatform(p));
 
   // lista de Applications
@@ -778,6 +821,7 @@ STAGES.forEach(s=>{
          : s.verdict==='el corazón' ? '#f85149' : '#6b7a8c')
     .attr('font-size',10).attr('font-weight',600)
     .attr('letter-spacing','.4px').text(s.verdict.toUpperCase());
+  reg(s.id, colX(s.col), PIPE_Y, COL_W, BOX_H);
   g.on('click',()=>{ selectStage(s.id); });
 });
 
@@ -820,6 +864,7 @@ gLinks.append('text').attr('class','lit')
     .attr('font-size',10.5).attr('font-family','ui-monospace,Menlo,monospace')
     .text('→ dispara el PipelineRun');
 
+  reg('start', sx, sy, START_W, sh);
   g.on('click',()=>showStart());
 
   // Flecha de arranque: gruesa, roja, imposible de no ver.
@@ -855,6 +900,7 @@ function agentBox(key, x, y, w, h, fill, stroke){
   const r = g.append('text').attr('x',x+12).attr('y',y+58).attr('fill','#aab8c6')
     .attr('font-size',11);
   r.text(a.brief || a.role); wrap(r, w-24, 13);
+  reg(key === 'remediation' ? 'remediation_ag' : key, x, y, w, h);
   g.on('click',()=>showAgent(key));
   return g;
 }
@@ -892,6 +938,7 @@ agentBox('approval', underStage('verify'), 600, AG_W, 84, '#1d1630', '#5b4387');
     .attr('font-size',11);
   bt.text('Lee lo que proponen los agentes y confirma, o no, cada arreglo.');
   wrap(bt, bw-24, 13);
+  reg('backstage', bx, by, bw, bh);
   g.on('click',()=>showBackstage());
 }
 
@@ -921,57 +968,64 @@ function link(d, color, marker, dash, owners, label){
   DEPS.push({ path, text, owners: new Set(owners) });
 }
 
-// rojo → gate-blue (es un step de esa task)
-link(`M${scx_('gate-blue')},${PIPE_Y-20}V${PIPE_Y}`, '#f85149','ared',null,['red','gate-blue']);
-// gate-blue → azul (A2A)
-link(`M${scx_('gate-blue')},${PIPE_Y+BOX_H}V${PIPE_Y+BOX_H+18}`, '#58a6ff','ablue',null,
-  ['blue','gate-blue'], {x:scx_('gate-blue')+8, y:PIPE_Y+BOX_H+13, t:'A2A'});
+// Carriles libres: alturas por las que las flechas viajan en horizontal sin
+// atravesar ninguna caja.
+const LANE_TOP    = 240;                   // entre la plataforma y las etapas
+const LANE_UNDER  = PIPE_Y + BOX_H + 136;  // bajo la fila de etapas
+const LANE_AGENTS = 572;                   // sobre la franja de los agentes
 
-// remediation (etapa) → agente de remediación
-link(`M${scx_('remediation')},${PIPE_Y+BOX_H}V${572}H${sx_('remediation')+63}V600`, '#bc8cff','apurple','4 3',
-  ['remediation'], {x:scx_('remediation')+8, y:PIPE_Y+BOX_H+30, t:'A2A · solo «advise» (8081)'});
+// --- El duelo ------------------------------------------------------------
+link(route('red','gate-blue',{from:'bottom',to:'top'}), '#f85149','ared',null,
+  ['red','gate-blue']);
+link(route('gate-blue','blue',{from:'bottom',to:'top'}), '#58a6ff','ablue',null,
+  ['blue','gate-blue'],
+  {x:BOX['gate-blue'].cx+10, y:PIPE_Y+BOX_H+14, t:'le manda el PR'});
 
-// agente de aprobación lee PipelineRuns
-link(`M${scx_('deploy-gitops')},${PIPE_Y+BOX_H}V548H${sx_('verify')+96}V600`, '#bc8cff','apurple','4 3',
-  ['approval'], {x:sx_('verify')+110, y:540, t:'lee PipelineRuns (RBAC solo lectura)'});
+// --- Las etapas que consultan a un agente --------------------------------
+link(route('remediation','remediation_ag',{from:'bottom',to:'top',lane:LANE_AGENTS}),
+  '#bc8cff','apurple','4 3', ['remediation'],
+  {x:BOX['remediation'].cx+10, y:PIPE_Y+BOX_H+26, t:'pide consejo'});
 
-// agentes → vLLM y MCP
-link(`M${sx_('remediation')+63},600V524H${platX[1]+125}V158`, '#39c5bb','ateal','3 3',
-  ['remediation','vllm','mcp']);
-link(`M${sx_('verify')+96},600V536H${platX[2]+137}V158`, '#39c5bb','ateal','3 3',
-  ['approval','vllm','mcp']);
-// azul → vLLM (modo llm)
-link(`M${sx_('gate-blue')+150},${PIPE_Y+BOX_H+18}V${PIPE_Y+BOX_H+4}H${sx_('gate-blue')+196}V200H${platX[1]+190}V158`,
+link(route('deploy-gitops','approval',{from:'bottom',to:'top',lane:LANE_AGENTS}),
+  '#bc8cff','apurple','4 3', ['approval'],
+  {x:BOX['approval'].cx+16, y:LANE_AGENTS-10, t:'revisa cada ejecución'});
+
+// --- Quién usa el modelo de IA y el catálogo de políticas ----------------
+link(route('remediation_ag','vllm',{from:'top',to:'bottom',lane:LANE_TOP}),
+  '#39c5bb','ateal','3 3', ['remediation','vllm','mcp']);
+link(route('approval','mcp',{from:'top',to:'bottom',lane:LANE_TOP}),
+  '#39c5bb','ateal','3 3', ['approval','vllm','mcp']);
+link(route('blue','vllm',{from:'top',to:'bottom',lane:LANE_TOP}),
   '#39c5bb','ateal','3 3', ['blue','vllm']);
 
-// build → Zot ; sign/verify ↔ Zot
-link(`M${scx_('build')},${PIPE_Y}V236H${platX[0]+125}V158`, '#39c5bb','ateal','3 3',
-  ['build','zot']);
-// sign/verify ↔ registro: baja por debajo de la fila de etapas y vuelve por la
-// izquierda. Subiendo cruzaba por encima de media docena de cajas.
-link(`M${scx_('sign')},${PIPE_Y+BOX_H}V${PIPE_Y+BOX_H+128}H${platX[0]+180}V158`, '#39c5bb','ateal','3 3',
-  ['sign','verify','trivy-scan','zot']);
+// --- Las etapas y el almacén de imágenes ---------------------------------
+link(route('build','zot',{from:'top',to:'bottom',lane:LANE_TOP}),
+  '#39c5bb','ateal','3 3', ['build','zot']);
+link(route('sign','zot',{from:'bottom',to:'bottom',lane:LANE_UNDER}),
+  '#39c5bb','ateal','3 3', ['sign','verify','trivy-scan','zot']);
 
-// deploy-gitops → Kyverno (el rechazo)
-link(`M${scx_('deploy-gitops')},${PIPE_Y}V250H${platX[3]+137}V158`, '#d29922','aamber',null,
-  ['deploy-gitops','kyverno'], {x:scx_('deploy-gitops')+10, y:244, t:'RECHAZADO ×2', bold:true});
+// --- El intento de despliegue y su rechazo -------------------------------
+link(route('deploy-gitops','kyverno',{from:'top',to:'bottom',lane:LANE_TOP}),
+  '#d29922','aamber',null, ['deploy-gitops','kyverno'],
+  {x:BOX['kyverno'].x+BOX['kyverno'].w+16, y:LANE_TOP-8,
+   t:'RECHAZADO ×2', bold:true});
 
-// --- EL CICLO COMPLETO: agente → Backstage → persona → Git → Argo CD ----
-// Los dos agentes publican su informe en Backstage.
-link(`M${underStage('remediation')},642H${BAND_X+314}`, '#bc8cff','apurple','4 3',
-  ['remediation','backstage'], {x:BAND_X+330, y:636, t:'los agentes publican aquí su informe'});
-link(`M${underStage('verify')},660H${BAND_X+314}`, '#bc8cff','apurple','4 3',
-  ['approval','backstage']);
+// --- El ciclo: agente → Backstage → persona → Git → Argo CD --------------
+link(route('remediation_ag','backstage',{from:'left',to:'right'}),
+  '#bc8cff','apurple','4 3', ['remediation','backstage'],
+  {x:BOX['backstage'].x+BOX['backstage'].w+14, y:BOX['backstage'].cy-10,
+   t:'los agentes publican aquí su informe'});
+link(route('approval','backstage',{from:'bottom',to:'bottom',
+  lane:BOX['backstage'].y+BOX['backstage'].h+24}),
+  '#bc8cff','apurple','4 3', ['approval','backstage']);
 
-// Backstage → Git: lo que la persona confirma se escribe como cambio en Git.
-link(`M${BAND_X+169},684V742`, '#3fb950','agreen',null,
-  ['backstage','argocd'], {x:BAND_X+180, y:716, t:'la persona confirma → el cambio va a Git', bold:true});
+link(route('backstage','argocd',{from:'bottom',to:'top'}),
+  '#3fb950','agreen',null, ['backstage','argocd'],
+  {x:BOX['backstage'].cx+12, y:BOX['backstage'].y+BOX['backstage'].h+32,
+   t:'la persona confirma → va a Git', bold:true});
 
-// Argo CD gobierna el pipeline y los agentes
-link(`M${PIPE_X+188},776V730H${scx_('sbom')}V${PIPE_Y+BOX_H}`, '#3fb950','agreen','4 3',
-  ['argocd']);
-link(`M${PIPE_X+188},776V730H${sx_('remediation')+63}V686`, '#3fb950','agreen','4 3',
-  ['argocd']);
+link(route('argocd','remediation_ag',{from:'top',to:'bottom',lane:748}),
+  '#3fb950','agreen','4 3', ['argocd']);
 
 /* Enciende solo las dependencias que tocan alguno de los nodos dados. */
 function showDeps(ids){
@@ -1157,19 +1211,29 @@ function dimAllBut(ids){
   d3.selectAll('.flow').classed('dimmed',true).classed('lit',false);
   showDeps(ids);                   // y se encienden solo las de lo elegido
 }
+/* Vecinos de un nodo SEGÚN LOS ENLACES REALES. Antes esta lista estaba escrita
+   a mano y se quedaba corta: al pinchar una caja no se encendían todos los
+   implicados. Ahora se deriva de las dependencias declaradas. */
+function related(id){
+  const ids = new Set([id]);
+  // El agente de remediación comparte nombre con su etapa.
+  if(id === 'remediation') ids.add('remediation_ag');
+  DEPS.forEach(d => {
+    if(d.owners.has(id)) d.owners.forEach(o => ids.add(o));
+  });
+  return [...ids];
+}
 function focusStage(s){
-  const ids=[s.id]; if(s.agent) ids.push(s.agent);
-  if(s.id==='gate-blue') ids.push('red','blue');
-  if(s.id==='deploy-gitops') ids.push('kyverno','argocd');
-  if(['build','sign','verify','trivy-scan'].includes(s.id)) ids.push('zot');
+  const ids = related(s.id);
+  if(s.agent && !ids.includes(s.agent)) ids.push(s.agent);
   dimAllBut(ids);
 }
 function focusAgent(key){
-  const a=AGENTS[key], ids=[key];
+  const ids = related(key);
+  const a = AGENTS[key];
   if(a.under) ids.push(a.under);
-  if(a.llm) ids.push('vllm');
-  if(a.mcp) ids.push('mcp');
-  if(key==='approval') ids.push(...STAGES.map(s=>s.id));
+  // El de aprobación observa todas las etapas, no solo una.
+  if(key === 'approval') ids.push(...STAGES.map(x => x.id));
   dimAllBut(ids);
 }
 
