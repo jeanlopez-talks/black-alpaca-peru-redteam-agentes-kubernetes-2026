@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GitOpsSecurityAuditRules",
+  "version": "1.0.0",
+  "description": "Especificación estructurada de reglas de auditoría y estándares para agentes de IA",
+  "rules": [
+    {
+      "id": "SEC-KUST-001",
+      "category": "Kustomize",
+      "severity": "CRITICAL",
+      "name": "No Deprecated Directives",
+      "description": "Prohíbe commonLabels, bases, patchesJson6902, patchesStrategicMerge y vars",
+      "forbidden_keys": ["commonLabels", "bases", "patchesJson6902", "patchesStrategicMerge", "vars"],
+      "remediation": "Usar 'labels' con 'includeSelectors: false', 'resources' y 'patches'"
+    },
+    {
+      "id": "SEC-KUST-002",
+      "category": "Kustomize",
+      "severity": "HIGH",
+      "name": "Standard Kustomize ApiVersion",
+      "description": "Exige kustomize.config.k8s.io/v1beta1",
+      "expected_api_version": "kustomize.config.k8s.io/v1beta1"
+    },
+    {
+      "id": "SEC-HELM-001",
+      "category": "Helm",
+      "severity": "CRITICAL",
+      "name": "Immutable Target Revision",
+      "description": "Prohíbe targetRevision HEAD, latest, master o main en Applications de Argo CD",
+      "forbidden_patterns": ["^latest$", "^HEAD$", "^master$", "^main$"],
+      "remediation": "Fijar versión semántica estricta (ej. 2.10.2)"
+    },
+    {
+      "id": "SEC-HELM-002",
+      "category": "Helm",
+      "severity": "HIGH",
+      "name": "Chart V2 Specification",
+      "description": "Todos los Chart.yaml deben usar apiVersion: v2",
+      "expected_api_version": "v2"
+    },
+    {
+      "id": "SEC-POD-001",
+      "category": "PodSecurity",
+      "severity": "HIGH",
+      "name": "Run As Non Root",
+      "description": "Los Pods de aplicación deben declarar runAsNonRoot: true y runAsUser > 0",
+      "required_fields": [
+        "spec.template.spec.securityContext.runAsNonRoot",
+        "spec.template.spec.securityContext.runAsUser"
+      ]
+    },
+    {
+      "id": "SEC-POD-002",
+      "category": "PodSecurity",
+      "severity": "HIGH",
+      "name": "Drop All Capabilities",
+      "description": "Los contenedores deben hacer drop de todas las capacidades",
+      "required_fields": [
+        "spec.template.spec.containers[*].securityContext.capabilities.drop"
+      ],
+      "expected_value": ["ALL"]
+    },
+    {
+      "id": "SEC-POD-003",
+      "category": "PodSecurity",
+      "severity": "HIGH",
+      "name": "No Privilege Escalation",
+      "description": "allowPrivilegeEscalation debe ser false en todos los contenedores de aplicación",
+      "required_field": "spec.template.spec.containers[*].securityContext.allowPrivilegeEscalation",
+      "expected_value": false
+    },
+    {
+      "id": "SEC-NET-001",
+      "category": "Networking",
+      "severity": "MEDIUM",
+      "name": "Resilient CoreDNS Pod Selector",
+      "description": "Las NetworkPolicies que filtran DNS deben admitir tanto kube-dns como coredns",
+      "recommended_selector": {
+        "matchExpressions": [
+          {
+            "key": "k8s-app",
+            "operator": "In",
+            "values": ["kube-dns", "coredns"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "SEC-API-001",
+      "category": "KubernetesAPIs",
+      "severity": "CRITICAL",
+      "name": "No Retired API Versions",
+      "description": "Prohíbe APIs retiradas entre Kubernetes v1.22 y v1.34",
+      "forbidden_api_versions": [
+        "extensions/v1beta1",
+        "networking.k8s.io/v1beta1",
+        "policy/v1beta1",
+        "batch/v1beta1",
+        "rbac.authorization.k8s.io/v1beta1",
+        "autoscaling/v2beta1",
+        "autoscaling/v2beta2",
+        "apiextensions.k8s.io/v1beta1"
+      ]
+    }
+  ],
+  "verification_commands": [
+    {
+      "name": "Kustomize Dry-Run",
+      "command": "kubectl kustomize <dir>"
+    },
+    {
+      "name": "Kubeconform Validation",
+      "command": "kubeconform -strict -summary -kubernetes-version 1.34.0 <file>"
+    },
+    {
+      "name": "GitOps Python Test Suite",
+      "command": "python3 scripts/validate-gitops.py"
+    }
+  ]
+}
