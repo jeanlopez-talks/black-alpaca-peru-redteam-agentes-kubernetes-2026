@@ -110,6 +110,7 @@
   <div class="sep"></div>
   <span class="barlbl">Recorrido</span>
   <button id="act3">Camino del ataque (acto 3)</button>
+  <button id="deps">Mostrar dependencias</button>
   <button id="reset">Limpiar</button>
 </div>
 
@@ -554,7 +555,7 @@ gLinks.append('text').attr('class','lit')
 /* --- EMPIEZA AQUÍ: el disparador ---------------------------------------
    Sin esto el diagrama eran nueve cajas iguales sin punto de entrada.    */
 {
-  const sx = 60, sy = PIPE_Y - 30, sh = BOX_H + 60;
+  const sx = 60, sy = PIPE_Y - 38, sh = BOX_H + 76;
   const g = gNodes.append('g').attr('class','node lit')
     .attr('data-id','start').style('cursor','pointer');
 
@@ -568,11 +569,16 @@ gLinks.append('text').attr('class','lit')
     .attr('font-size',15).attr('font-weight',700).text('Se abre un PR');
   const t = g.append('text').attr('x',sx+16).attr('y',sy+74).attr('fill','#d9b6b4')
     .attr('font-size',11.5);
-  t.text('Código que no controlas entra a tu CI. Eso dispara el PipelineRun.');
+  t.text('Código que no controlas entra a tu CI y dispara el PipelineRun.');
   wrap(t, START_W-32, 14);
+  // La fuente NO llega por git clone: se materializa desde ConfigMaps. Decirlo
+  // aquí evita que el diagrama parezca que se salta un paso.
+  g.append('text').attr('x',sx+16).attr('y',sy+sh-26).attr('fill','#9c7b84')
+    .attr('font-size',10).attr('font-family','ui-monospace,Menlo,monospace')
+    .text('fuente: ConfigMap sample-app-src');
   g.append('text').attr('x',sx+16).attr('y',sy+sh-12).attr('fill','#9c7b84')
     .attr('font-size',10).attr('font-family','ui-monospace,Menlo,monospace')
-    .text('PipelineRun → 9 etapas');
+    .text('(sin git clone) → 9 etapas');
 
   g.on('click',()=>showStart());
 
@@ -619,52 +625,81 @@ agentBox('remediation', colX(4)-38, 600, 266, 86, '#1d1630', '#5b4387');
 // agente de aprobación — a la derecha, sin etapa (observa todas)
 agentBox('approval', colX(7)-30, 600, 290, 86, '#1d1630', '#5b4387');
 
-/* --- enlaces agente ↔ etapa / plataforma -------------------------------- */
-function link(d, color, marker, dash, cls){
-  return gLinks.append('path').attr('class','link lit '+(cls||''))
-    .attr('d',d).attr('stroke',color).attr('stroke-width',1.5).attr('fill','none')
-    .attr('stroke-dasharray',dash||null).attr('marker-end',`url(#${marker})`);
+/* --- enlaces de dependencia --------------------------------------------
+   DECISIÓN DE DISEÑO: estos enlaces NO se dibujan por defecto.
+
+   Dibujar las 12 relaciones a la vez producía una maraña de líneas punteadas
+   cruzando el lienzo y tapando las bandas: el flujo principal (que es lo que
+   hay que entender primero) se perdía. Ahora la vista por defecto muestra solo
+   la secuencia del pipeline, y cada dependencia aparece SOLO cuando se
+   selecciona uno de sus dos extremos. Cada enlace declara a qué nodos
+   pertenece (`owners`) para poder encenderse de forma selectiva.          */
+const DEPS = [];
+function link(d, color, marker, dash, owners, label){
+  const path = gLinks.append('path').attr('class','link dep')
+    .attr('d',d).attr('stroke',color).attr('stroke-width',1.8).attr('fill','none')
+    .attr('stroke-dasharray',dash||null).attr('marker-end',`url(#${marker})`)
+    .attr('opacity',0);
+  let text = null;
+  if(label){
+    text = gLinks.append('text').attr('class','link dep')
+      .attr('x',label.x).attr('y',label.y).attr('fill',color)
+      .attr('font-size',10).attr('font-weight',label.bold?600:400)
+      .attr('font-family','ui-monospace,Menlo,monospace')
+      .attr('opacity',0).text(label.t);
+  }
+  DEPS.push({ path, text, owners: new Set(owners) });
 }
+
 // rojo → gate-blue (es un step de esa task)
-link(`M${colX(6)+80},${PIPE_Y-20}V${PIPE_Y}`, '#f85149','ared');
+link(`M${colX(6)+80},${PIPE_Y-20}V${PIPE_Y}`, '#f85149','ared',null,['red','gate-blue']);
 // gate-blue → azul (A2A)
-link(`M${colX(6)+80},${PIPE_Y+BOX_H}V${PIPE_Y+BOX_H+18}`, '#58a6ff','ablue');
-gLinks.append('text').attr('class','lit').attr('x',colX(6)+88).attr('y',PIPE_Y+BOX_H+13)
-  .attr('fill','#58a6ff').attr('font-size',10)
-  .attr('font-family','ui-monospace,Menlo,monospace').text('A2A');
+link(`M${colX(6)+80},${PIPE_Y+BOX_H}V${PIPE_Y+BOX_H+18}`, '#58a6ff','ablue',null,
+  ['blue','gate-blue'], {x:colX(6)+88, y:PIPE_Y+BOX_H+13, t:'A2A'});
 
 // remediation (etapa) → agente de remediación
-link(`M${colCX(4)},${PIPE_Y+BOX_H}V${572}H${colX(4)+95}V600`, '#bc8cff','apurple','4 3');
-gLinks.append('text').attr('class','lit').attr('x',colCX(4)+8).attr('y',PIPE_Y+BOX_H+30)
-  .attr('fill','#bc8cff').attr('font-size',10)
-  .attr('font-family','ui-monospace,Menlo,monospace').text('A2A · solo «advise» (8081)');
+link(`M${colCX(4)},${PIPE_Y+BOX_H}V${572}H${colX(4)+95}V600`, '#bc8cff','apurple','4 3',
+  ['remediation'], {x:colCX(4)+8, y:PIPE_Y+BOX_H+30, t:'A2A · solo «advise» (8081)'});
 
-// agente de aprobación lee PipelineRuns (de toda la banda del pipeline)
-link(`M${colX(8)+COL_W-30},${PIPE_Y+BOX_H}V548H${colX(7)+115}V600`, '#bc8cff','apurple','4 3');
-gLinks.append('text').attr('class','lit').attr('x',colX(8)-6).attr('y',540)
-  .attr('fill','#bc8cff').attr('font-size',10)
-  .attr('font-family','ui-monospace,Menlo,monospace').text('lee PipelineRuns (RBAC solo lectura)');
+// agente de aprobación lee PipelineRuns
+link(`M${colX(8)+COL_W-30},${PIPE_Y+BOX_H}V548H${colX(7)+115}V600`, '#bc8cff','apurple','4 3',
+  ['approval'], {x:colX(8)-6, y:540, t:'lee PipelineRuns (RBAC solo lectura)'});
 
-// agentes → vLLM y MCP (hacia la banda de plataforma)
-link(`M${colX(4)+95},600V524H${platX[1]+125}V158`, '#39c5bb','ateal','3 3');
-link(`M${colX(7)+115},600V536H${platX[2]+137}V158`, '#39c5bb','ateal','3 3');
+// agentes → vLLM y MCP
+link(`M${colX(4)+95},600V524H${platX[1]+125}V158`, '#39c5bb','ateal','3 3',
+  ['remediation','vllm','mcp']);
+link(`M${colX(7)+115},600V536H${platX[2]+137}V158`, '#39c5bb','ateal','3 3',
+  ['approval','vllm','mcp']);
 // azul → vLLM (modo llm)
 link(`M${colX(6)+200},${PIPE_Y+BOX_H+18}V${PIPE_Y+BOX_H+4}H${colX(6)+248}V200H${platX[1]+190}V158`,
-  '#39c5bb','ateal','3 3');
+  '#39c5bb','ateal','3 3', ['blue','vllm']);
 
-// build → Zot ; trivy ← Zot ; sign/verify ↔ Zot
-link(`M${colCX(1)},${PIPE_Y}V236H${platX[0]+125}V158`, '#39c5bb','ateal','3 3');
-link(`M${colCX(5)},${PIPE_Y}V214H${platX[0]+180}V158`, '#39c5bb','ateal','3 3');
+// build → Zot ; sign/verify ↔ Zot
+link(`M${colCX(1)},${PIPE_Y}V236H${platX[0]+125}V158`, '#39c5bb','ateal','3 3',
+  ['build','zot']);
+link(`M${colCX(5)},${PIPE_Y}V214H${platX[0]+180}V158`, '#39c5bb','ateal','3 3',
+  ['sign','verify','trivy-scan','zot']);
 
-// deploy-gitops → Kyverno (rechazo)
-link(`M${colCX(8)},${PIPE_Y}V250H${platX[3]+137}V158`, '#d29922','aamber');
-gLinks.append('text').attr('class','lit').attr('x',colCX(8)+10).attr('y',244)
-  .attr('fill','#d29922').attr('font-size',10.5).attr('font-weight',600)
-  .text('RECHAZADO ×2');
+// deploy-gitops → Kyverno (el rechazo)
+link(`M${colCX(8)},${PIPE_Y}V250H${platX[3]+137}V158`, '#d29922','aamber',null,
+  ['deploy-gitops','kyverno'], {x:colCX(8)+10, y:244, t:'RECHAZADO ×2', bold:true});
 
-// Argo CD → pipeline / agentes / policies (gobierna)
-link(`M${PIPE_X+188},776V730H${colCX(2)}V${PIPE_Y+BOX_H}`, '#3fb950','agreen','4 3');
-link(`M${PIPE_X+188},776V730H${colX(4)+95}V686`, '#3fb950','agreen','4 3');
+// Argo CD gobierna el pipeline y los agentes
+link(`M${PIPE_X+188},776V730H${colCX(2)}V${PIPE_Y+BOX_H}`, '#3fb950','agreen','4 3',
+  ['argocd']);
+link(`M${PIPE_X+188},776V730H${colX(4)+95}V686`, '#3fb950','agreen','4 3',
+  ['argocd']);
+
+/* Enciende solo las dependencias que tocan alguno de los nodos dados. */
+function showDeps(ids){
+  const want = new Set(ids);
+  DEPS.forEach(d => {
+    const on = [...d.owners].some(o => want.has(o));
+    d.path.attr('opacity', on ? 1 : 0);
+    if(d.text) d.text.attr('opacity', on ? 1 : 0);
+  });
+}
+function hideDeps(){ showDeps([]); }
 
 /* ===========================================================================
    PANEL
@@ -708,6 +743,13 @@ function showStart(){
     <h3>Qué pasa</h3>
     <p>Alguien abre un pull request. Ese PR trae <b>código que tú no controlas</b>
     y dispara un <code>PipelineRun</code> que recorre las 9 etapas de izquierda a derecha.</p>
+    <h3>¿Y el git clone?</h3>
+    <p>No hay task de clone. La fuente llega por <b>ConfigMap</b>
+    (<code>sample-app-src</code> y <code>duel-sast-input</code>), y un step la
+    materializa en el workspace dentro de <code>sast</code> y de <code>build</code>.</p>
+    <div class="note">Se hizo así para que la demo sea <b>reproducible y sin red</b>:
+    cada acto es un contenido distinto del ConfigMap, no una rama que haya que
+    clonar. El pipeline no depende de que GitHub responda el día de la charla.</div>
     <h3>Por qué importa</h3>
     <div class="note">Este es el modelo de amenaza realista: no hace falta que nadie
     entre a tu clúster. Basta con que <b>tu CI ejecute lo que llega en un PR</b>.</div>
@@ -785,9 +827,13 @@ function showPlatform(p){
   showAll();
 }
 
-/* --- foco / atenuado --------------------------------------------------- */
+/* --- foco / atenuado ---------------------------------------------------
+   Vista general = SOLO el flujo del pipeline, sin dependencias. Las líneas de
+   dependencia aparecen únicamente al seleccionar uno de sus extremos.      */
 function showAll(){
-  d3.selectAll('.node,.link').classed('dimmed',false).classed('lit',true);
+  d3.selectAll('.node').classed('dimmed',false).classed('lit',true);
+  d3.selectAll('.flow').classed('dimmed',false).classed('lit',true);
+  hideDeps();                      // nada de maraña en la vista por defecto
 }
 function dimAllBut(ids){
   const keep = new Set(ids);
@@ -795,7 +841,9 @@ function dimAllBut(ids){
     const on = keep.has(d3.select(this).attr('data-id'));
     d3.select(this).classed('dimmed',!on).classed('lit',on);
   });
-  d3.selectAll('.link').classed('dimmed',true).classed('lit',false);
+  // El flujo del pipeline se atenúa pero no desaparece: da contexto.
+  d3.selectAll('.flow').classed('dimmed',true).classed('lit',false);
+  showDeps(ids);                   // y se encienden solo las de lo elegido
 }
 function focusStage(s){
   const ids=[s.id]; if(s.agent) ids.push(s.agent);
@@ -858,12 +906,37 @@ d3.select('#act3').on('click',()=>{
     El agente puede falsificar una anotación, pero no puede hacerse pasar por Argo CD.</div>
   `);
 });
+// Las dependencias están ocultas por defecto; este botón las muestra todas a la
+// vez para quien quiera el panorama completo, asumiendo el cruce de líneas.
+d3.select('#deps').on('click', function(){
+  const on = !d3.select(this).classed('on');
+  d3.select(this).classed('on', on);
+  if(on){
+    showDeps([...STAGES.map(s=>s.id), ...Object.keys(AGENTS),
+              'zot','vllm','mcp','kyverno','argocd']);
+    panel.html(`<h2>Todas las dependencias</h2>
+      <p>Cada línea punteada es una dependencia real: quién llama a quién, quién lee
+      del registry, quién consulta el LLM o el catálogo.</p>
+      <div class="note">Están ocultas por defecto a propósito: dibujadas todas a la vez
+      tapan el flujo principal. Para leer una sola, haz clic en la caja que te interese.</div>
+      <h3>Qué significa cada color</h3>
+      <ul>
+        <li><b style="color:var(--teal)">Verde agua</b> — llamadas a la plataforma (registry, LLM, MCP)</li>
+        <li><b style="color:var(--purple)">Morado</b> — A2A entre el pipeline y los agentes</li>
+        <li><b style="color:var(--amber)">Ámbar</b> — el intento de despliegue y su rechazo</li>
+        <li><b style="color:var(--green)">Verde</b> — lo que gobierna Argo CD</li>
+      </ul>`);
+  } else { showAll(); intro(); }
+});
+
 d3.select('#reset').on('click',()=>{
   d3.selectAll('[data-layer]').classed('on',false);
   d3.select('[data-layer="all"]').classed('on',true);
+  d3.select('#deps').classed('on',false);
   d3.selectAll('.stage').classed('sel',false); showAll(); intro();
 });
 
+showAll();   // arranca sin dependencias: primero el flujo, el detalle bajo demanda
 intro();
 </script>
 </body>
