@@ -1,53 +1,81 @@
-# Charla 2 — Rojo vs Azul, los dos son IA
+# Material visual de la sesión 2
 
-Presentación HTML autocontenida (un solo archivo, sin CDN, abre offline) para la
-charla 2 de Black Alpaca 2026: _"Agentes ofensivos y defensivos en tu pipeline DevSecOps"_.
+Dos piezas independientes, ambas en HTML autocontenido: se abren con doble clic,
+**no necesitan servidor ni conexión a internet**.
 
-## Abrir
+| Archivo | Para qué |
+|---|---|
+| `index.html` | Las diapositivas de la charla |
+| `architecture-diagram.html` | El mapa del pipeline y los agentes, con modo presentación |
 
-Doble clic en `index.html`, o:
+---
 
-```bash
-open index.html          # macOS
-xdg-open index.html      # Linux
-```
+## `architecture-diagram.html`
 
-No necesita servidor ni dependencias. Para proyectar: tecla `F` (pantalla completa).
+Mapa navegable del pipeline DevSecOps, los cuatro agentes, el portal interno y la
+admisión. Sirve para dos cosas: **explicarlo en vivo** y **consultarlo** después.
 
-## Controles
+### Modo presentación
+
+Pulsa **`p`** o el botón `▶ Presentar`. El diagrama pasa a pantalla completa, se
+ocultan los controles y aparece el relato abajo en cuerpo grande.
 
 | Tecla | Acción |
-|-------|--------|
-| `←` / `→` (o `espacio`, `PageUp/Down`) | navegar entre slides |
-| `N` | mostrar/ocultar **notas del ponente** (con reparto de tiempo) |
-| `F` | pantalla completa |
-| `Home` / `End` | primera / última slide |
+|---|---|
+| `→` `espacio` | Siguiente paso |
+| `←` | Paso anterior |
+| `Inicio` / `Fin` | Primer / último paso |
+| `Esc` | Salir |
 
-También soporta swipe en pantalla táctil y saltar a una slide con `#N` en la URL
-(ej. `index.html#5`).
+**12 pasos**, en el orden del relato: el escenario, los cuatro actos, el hallazgo del
+modelo, lo que aguanta y el cierre. Cada paso enciende solo las piezas implicadas.
 
-## Exportar a PDF
+> Antes de presentar: abre el archivo y pulsa `→` un par de veces para comprobar que
+> el proyector lo muestra bien. No hace falta red.
 
-1. Abrir `index.html` en Chrome.
-2. `Cmd/Ctrl + P` → **Guardar como PDF**.
-3. Recomendado: **Horizontal (Landscape)**, márgenes **Ninguno**, activar
-   **Gráficos de fondo** (para que salgan los colores y el fondo negro).
+### Modo exploración
 
-El modo impresión apila automáticamente todas las slides, una por página. Las
-notas del ponente no se incluyen en el PDF.
+Clic en cualquier caja. El panel lateral muestra, de lo general a lo concreto:
 
-## Estructura
+1. **Qué hace**, en una frase
+2. **Y esto para qué** — la consecuencia
+3. **Qué puede fallar aquí** — rojo donde se rompe, verde donde aguanta
+4. **En el laboratorio** — qué es real, qué se simula y qué está pendiente
+5. **Código** — la ruta exacta en este repositorio
+6. **Detalle técnico** (plegable) — pasos internos y decisiones de diseño
 
-11 slides siguiendo el esqueleto de 50 min:
-portada · pitch inocente · reglas del duelo (agentes LangChain por A2A dentro de
-Tekton: rojo=client/step, azul=server en su propio sandbox) · arquitectura de los agentes
-(LangChain + A2A + AgentCard, modos `rules`/`llm`) · Acto 1 (azul gana) ·
-Acto 2a (evasión del clasificador) · Acto 2b (diff envenenado) ·
-Acto 3 (azul traiciona + egress 443 = nueva superficie) · Acto 4 (fronteras de
-infra) · checklist + lab (ya ejecutado en OpenShift 4.22 real) · gracias.
+Los botones `Solo pipeline`, `Solo agentes` y `Solo GitOps` aíslan una capa;
+`Camino del ataque` recorre el acto 3.
 
-La arquitectura reflejada es la **ya construida y probada**: agentes reales
-(langgraph `create_react_agent` + tools) que se comunican por **A2A**
-(`a2a-sdk`), el azul como A2A server (AgentCard skill `review-pr`) y el rojo como
-A2A client, corriendo en Kubernetes (azul=servicio A2A en sandbox, rojo=step de Tekton sin red salvo el azul; `merge-deploy` solo si
-`decision == APPROVE`). Ver `../04-ai-agents/README.md` y `../03-gitops/devsecops-pipeline/README.md`.
+### Qué refleja, y qué no
+
+- Las etapas con **borde punteado** (`git-clone`, `test`, `attest`) están
+  especificadas pero **aún no implementadas**. Las demás corren en el clúster.
+- El **acto 2** aparece en el relato marcado como pendiente: existen `act1`, `act3`
+  y `act4` como ejecuciones reales, no `act2`.
+- El **merge del PR** se simula a propósito: el ejecutor no tiene permisos de merge.
+
+---
+
+## Regenerar el PNG para documentos
+
+El dossier del CFP incrusta una imagen del diagrama. Para rehacerla tras cualquier
+cambio:
+
+```bash
+../01-proposal/build-dossier.sh
+```
+
+Re-renderiza el diagrama y vuelve a generar el PDF, de modo que la imagen nunca
+quede desfasada respecto al diagrama real.
+
+---
+
+## Fuente de los datos
+
+Todo lo que afirma el diagrama está verificado contra:
+
+- `../03-gitops/devsecops-pipeline/tekton/pipeline-devsecops.yaml` — las etapas y su orden
+- `../03-gitops/backstage/devsecops-agent/` — los agentes y su configuración
+- `../04-ai-agents/src/devsecops_agents/` — el código de los cuatro agentes
+- `kubectl get applications -n argocd` — lo que Argo CD gobierna de verdad
