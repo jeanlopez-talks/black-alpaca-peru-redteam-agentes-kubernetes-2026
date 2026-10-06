@@ -1,5 +1,4 @@
-# Engañé al gate de IA de tu pipeline
-## La firma seguía siendo válida y aun así no entró
+# Engañé al gate de IA de tu pipeline: la firma seguía siendo válida y aun así no entró
 
 <div class="meta">
 
@@ -7,7 +6,12 @@
 
 Propuesta para **Black Alpaca 2026** · sesión de 50 min · español · nivel intermedio-avanzado
 
-Laboratorio completo y reproducible: `github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026`
+</div>
+
+<div class="repo">
+
+**Laboratorio completo, reproducible y público**
+`github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026`
 
 </div>
 
@@ -130,3 +134,15 @@ cambio se escribe en Git para que lo aplique Argo CD. **El agente nunca toca el 
 - El ataque de los 3 000 millones de tokens (mayo 2026) se narra como **caso de estudio
   citado**, nunca replicado.
 - La demo corre en vivo, con **grabación de respaldo** por si falla la red o la GPU.
+
+---
+
+<div class="repo">
+
+**Todo el material de esta propuesta es público**
+`github.com/jeanlopez-talks/black-alpaca-peru-redteam-agentes-kubernetes-2026`
+
+Manifiestos GitOps del pipeline y las políticas · código de los cuatro agentes ·
+diagrama interactivo · diapositivas · evidencias de cada medición.
+
+</div>

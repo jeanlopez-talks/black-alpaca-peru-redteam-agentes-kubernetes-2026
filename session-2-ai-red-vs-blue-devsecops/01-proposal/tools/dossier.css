@@ -2,7 +2,7 @@
    Tipografía oficial de Red Hat: Display para titulares, Text para el cuerpo y
    Mono para rutas y código. Las tres están instaladas en el sistema. */
 
-@page { size: A4; margin: 17mm 16mm 15mm; }
+@page { size: A4; margin: 15mm 16mm 13mm; }
 
 :root{
   --rh-red:#ee0000;        /* rojo corporativo, solo como acento */
@@ -15,7 +15,7 @@
 
 body{
   font-family:"Red Hat Text","Red Hat Display",-apple-system,sans-serif;
-  font-size:10pt; line-height:1.55; color:var(--ink);
+  font-size:9.7pt; line-height:1.5; color:var(--ink);
   margin:0; max-width:none;
   -webkit-font-smoothing:antialiased;
 }
@@ -24,23 +24,23 @@ body{
 h1,h2,h3,h4{font-family:"Red Hat Display","Red Hat Text",sans-serif;
   font-weight:700; letter-spacing:-.2px; color:var(--ink)}
 
-h1{font-size:23pt; line-height:1.15; margin:0 0 3pt;
-   border-bottom:3px solid var(--rh-red); padding-bottom:7pt}
+h1{font-size:19pt; line-height:1.2; margin:0 0 4pt; text-wrap:balance;
+   border-bottom:3px solid var(--rh-red); padding-bottom:8pt}
 h2{font-size:12.5pt; font-weight:500; color:var(--ink-soft);
    margin:7pt 0 13pt; border:0; padding:0; letter-spacing:0}
-h3{font-size:12pt; margin:17pt 0 6pt; padding-bottom:4pt;
+h3{font-size:11.5pt; margin:13pt 0 5pt; padding-bottom:3pt;
    border-bottom:1px solid var(--rule)}
 h4{font-size:10.5pt; margin:12pt 0 4pt}
 
 p{margin:0 0 7pt}
-hr{border:0; border-top:1px solid var(--rule); margin:14pt 0}
+hr{border:0; border-top:1px solid var(--rule); margin:11pt 0}
 
 /* --- Tablas ------------------------------------------------------------ */
-table{border-collapse:collapse; width:100%; font-size:9pt; margin:9pt 0}
+table{border-collapse:collapse; width:100%; font-size:8.7pt; margin:7pt 0}
 th{font-family:"Red Hat Display",sans-serif; font-weight:700;
    background:var(--surface); text-align:left;
-   padding:6pt 8pt; border:1px solid var(--rule)}
-td{padding:6pt 8pt; border:1px solid var(--rule); vertical-align:top}
+   padding:5pt 8pt; border:1px solid var(--rule)}
+td{padding:4.5pt 8pt; border:1px solid var(--rule); vertical-align:top}
 tbody tr:nth-child(even){background:#fafafa}
 
 /* --- Código y rutas: Red Hat Mono -------------------------------------- */
@@ -90,3 +90,11 @@ h3,h4{break-after:avoid}
 /* Primera columna estrecha en las tablas de clave/valor: con el ancho por
    defecto se llevaba media página y el contenido quedaba comprimido. */
 table th:first-child, table td:first-child{width:21%}
+
+/* El repositorio, destacado: es lo primero que el comité va a querer abrir. */
+.repo{margin:9pt 0 0; padding:8pt 11pt; background:var(--surface);
+  border-left:3px solid var(--ink); border-radius:0 3px 3px 0}
+.repo p{margin:0; font-size:9pt}
+.repo strong{font-family:"Red Hat Display",sans-serif; display:block;
+  margin-bottom:2pt; color:var(--ink)}
+.repo code{background:transparent; padding:0; font-size:9pt; color:var(--accent)}
