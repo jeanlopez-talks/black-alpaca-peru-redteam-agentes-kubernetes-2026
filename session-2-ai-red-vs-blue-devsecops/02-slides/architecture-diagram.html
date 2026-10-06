@@ -100,6 +100,8 @@
   aside details summary::before{content:'▸';font-size:10px;transition:transform .15s}
   aside details[open] summary::before{transform:rotate(90deg)}
   aside details summary:hover{color:var(--dim)}
+  /* Sin el halo azul de foco del navegador al pinchar el desplegable. */
+  aside details summary:focus,aside details summary:focus-visible{outline:none}
   aside details h3:first-of-type{margin-top:12px}
   .hint{font-size:12px;color:var(--faint);line-height:1.6}
   .legend{display:flex;gap:14px;flex-wrap:wrap;padding:9px 26px 11px;font-size:11.5px;
@@ -242,12 +244,16 @@ const STAGES = [
     kind: "source",
     verdict: "la fuente",
     status: "todo",
-    what: "Clona el repositorio en la revisión del PR. Es el único origen de la fuente: a partir de aquí todo lo que el pipeline analiza, construye y firma viene de este clone.",
+    what: "Descarga el repositorio en la versión exacta que propone el PR. Todo lo que el pipeline analiza, construye y firma sale de aquí.",
     steps: [
-      "clone — git clone + checkout de la revisión del PR",
-      "(workspace compartido: el resto de etapas leen de aquí)",
+      "Descarga el repositorio completo",
+      "Se sitúa exactamente en la versión que propone el PR",
+      "Deja el código en un disco compartido que leerán todas las etapas",
     ],
-    results: ["commit = sha del PR", "url = repo clonado"],
+    results: [
+      "El identificador exacto del commit que se va a analizar",
+      "La dirección del repositorio del que salió",
+    ],
     why: "Todo lo que el pipeline escanea, construye y firma sale de aquí. Clonar da el origen verificable de la cadena: el commit es trazable hasta su revisión en Git.",
     agent: null,
   },
@@ -262,13 +268,15 @@ const STAGES = [
     kind: "scan",
     verdict: "calidad",
     status: "todo",
-    what: "Ejecuta las pruebas y el linter de la app sobre la fuente clonada, antes de construir la imagen.",
+    what: "Ejecuta las pruebas del proyecto y revisa el estilo del código, antes de construir la imagen.",
     steps: [
-      "unit-tests — la batería de pruebas de la app",
-      "lint — estilo y errores estáticos del lenguaje",
+      "Ejecuta las pruebas automáticas que el propio proyecto trae",
+      "Revisa el estilo y los errores evidentes del código (lint)",
     ],
-    results: ["status = PASS | FAIL"],
-    why: "Va antes del build por economía: si el código no pasa sus propias pruebas, no tiene sentido construir, escanear y firmar una imagen. No es una etapa de seguridad, es la higiene mínima que la audiencia espera ver en un pipeline real.",
+    results: [
+      "Si las pruebas pasaron o fallaron",
+    ],
+    why: "Va antes de construir por pura economía: si el código no pasa sus propias pruebas, no merece la pena gastar tiempo en construir, escanear y firmar una imagen.",
     agent: null,
   },
 
@@ -282,14 +290,16 @@ const STAGES = [
     kind: "scan",
     verdict: "informativo",
     status: "built",
-    what: "Escanea el CÓDIGO del PR antes de construir nada (shift-left): semgrep para patrones de seguridad y gitleaks para secretos.",
+    what: "Revisa el código antes de construir nada, que es cuando corregir sale más barato. Dos herramientas: una busca código inseguro, la otra busca secretos.",
     steps: [
-      "semgrep — rulesets p/ci + p/secrets",
-      "gitleaks — detect --no-git",
-      "sast-verdict — decide OK / FINDINGS / ERROR",
+      "Busca patrones de código peligrosos: inyecciones, criptografía débil, permisos de más (semgrep)",
+      "Busca contraseñas, tokens y claves escritas dentro del código (gitleaks)",
+      "Junta ambos resultados y emite un veredicto",
     ],
-    results: ["status = OK | FINDINGS | ERROR"],
-    why: "Es INFORMATIVO a propósito (sast-blocking=false). Si bloqueara, la demo nunca llegaría al gate — y el mensaje de la charla es que la frontera real está más abajo, no en el linter.",
+    results: [
+      "Si encontró problemas, y de qué tipo",
+    ],
+    why: "Avisa pero no detiene el pipeline, a propósito: si parara aquí, la demo nunca llegaría al momento interesante. Y el mensaje de la charla es justo ese — la frontera que de verdad protege está más adelante.",
     agent: null,
   },
 
@@ -303,13 +313,17 @@ const STAGES = [
     kind: "build",
     verdict: "push real",
     status: "built",
-    what: "kaniko construye la imagen de la app y la EMPUJA de verdad al registry interno Zot. Deja además el tar OCI y el digest en el workspace.",
+    what: "Construye la imagen del contenedor y la sube de verdad al registro interno del clúster. Guarda además una copia local y su huella digital.",
     steps: [
-      "kaniko-build-push — build + push (--insecure, Zot es HTTP interno)",
-      "record-image-ref — fija el Result",
+      "Prepara el código y las instrucciones de construcción",
+      "Construye la imagen del contenedor y la sube al registro interno (kaniko)",
+      "Anota la huella digital única de la imagen resultante",
     ],
-    results: ["image-ref = zot.registry.svc…/sample-app:latest"],
-    why: "Único step del pipeline que corre como root (uid 0), documentado como excepción de compliance: kaniko desempaqueta el rootfs en «/» y eso requiere uid 0. Mitigado con drop ALL + solo 6 capabilities, sin token de API y acotado a esta sola task.",
+    results: [
+      "La dirección donde quedó guardada la imagen",
+      "Su huella digital (digest), que la identifica sin ambigüedad",
+    ],
+    why: "Es el único paso que corre con permisos de administrador, porque construir una imagen lo exige. Está documentado como excepción y acotado: solo aquí, sin acceso a la API del clúster y con los permisos mínimos.",
     agent: null,
   },
 
@@ -323,13 +337,15 @@ const STAGES = [
     kind: "scan",
     verdict: "artefacto",
     status: "built",
-    what: "Syft genera el inventario de componentes de la imagen, leyendo el TAR OCI local (no el registry).",
+    what: "Genera el inventario de todo lo que contiene la imagen, leyendo la copia local en vez de descargarla otra vez.",
     steps: [
-      "syft-sbom — docker-archive: → cyclonedx-json + spdx-json",
-      "record-sbom",
+      "Abre la imagen y lista cada librería y versión que contiene (Syft)",
+      "Guarda ese inventario en los dos formatos estándar del sector",
     ],
-    results: ["sbom-status = OK | SKIPPED"],
-    why: "Lee el tar y no el registry porque es el mismo contenido bit a bit que se empujó, no necesita red ni flags insecure, y es reproducible. Describe exactamente la imagen que luego se firma por digest.",
+    results: [
+      "El inventario completo de ingredientes de la imagen",
+    ],
+    why: "Analiza la copia local en vez de descargarla otra vez: es exactamente el mismo contenido, no depende de la red y da siempre el mismo resultado.",
     agent: null,
   },
 
@@ -343,14 +359,18 @@ const STAGES = [
     kind: "scan",
     verdict: "informativo",
     status: "built",
-    what: "Trivy hace pull de la imagen DEL REGISTRY y la escanea. También escanea el filesystem del contexto (secretos, misconfig). Política HIGH,CRITICAL.",
+    what: "Descarga la imagen del registro y busca vulnerabilidades conocidas en todo lo que contiene. Solo reporta las graves y críticas.",
     steps: [
-      "trivy fs — vuln,secret,misconfig",
-      "trivy image --insecure — la imagen real del registry",
-      "+ salida JSON con --list-all-pkgs para el agente de remediación",
+      "Descarga la imagen del registro y la analiza (Trivy)",
+      "Compara cada librería con las bases públicas de vulnerabilidades",
+      "Revisa además el código en busca de secretos y configuraciones inseguras",
+      "Genera un mapa de qué paquete depende de cuál, para el agente de la etapa siguiente",
     ],
-    results: ["status = OK | FINDINGS | SKIPPED"],
-    why: "El flag --list-all-pkgs no es decorativo: produce el grafo DependsOn con el que el agente de remediación calcula qué carga de verdad la app. Sin ese grafo el modelo opinaría sobre supuestos.",
+    results: [
+      "Cuántas vulnerabilidades graves hay y en qué paquetes",
+      "El mapa de dependencias que usará el agente",
+    ],
+    why: "Además de listar vulnerabilidades, genera el mapa de qué depende de qué. Ese mapa es lo que permite al agente saber qué paquetes usa de verdad la aplicación, en vez de opinar a ciegas.",
     agent: null,
   },
 
@@ -364,12 +384,17 @@ const STAGES = [
     kind: "agentstage",
     verdict: "informativo",
     status: "built",
-    what: "Un cliente A2A manda los JSON de Trivy y el Containerfile al agente de remediación, que responde con el análisis priorizado. No aplica nada.",
+    what: "Envía el informe de vulnerabilidades al agente, que responde con las correcciones ordenadas por prioridad. No cambia nada por su cuenta.",
     steps: [
-      "advise — remediation-request → agente (puerto 8081, solo la skill «advise»)",
+      "Envía al agente el informe de vulnerabilidades y el fichero de construcción",
+      "El agente razona con el modelo de IA y propone qué quitar y qué actualizar",
+      "El código comprueba la propuesta y corrige al modelo si se inventó algo",
     ],
-    results: ["(sin Result; el informe queda en el agente y en Backstage)"],
-    why: "Desde aquí corre código que viene del PR, así que solo alcanza la puerta «advise» por NetworkPolicy. Confirmar una corrección está en OTRO puerto al que este namespace no llega: el pipeline puede pedir consejo, nunca aplicarlo.",
+    results: [
+      "Un informe con las correcciones propuestas, visible en Backstage",
+      "No cambia nada: solo propone. Decide una persona",
+    ],
+    why: "Aquí corre código que viene del PR, así que solo puede pedir consejo al agente. Confirmar una corrección está en otra puerta a la que este lado no llega: el pipeline nunca aplica nada por su cuenta.",
     agent: "remediation",
   },
 
@@ -383,14 +408,16 @@ const STAGES = [
     kind: "supply",
     verdict: "firma real",
     status: "built",
-    what: "cosign firma la imagen del registry POR DIGEST con la clave del duelo y sube la firma al registry como artefacto OCI.",
+    what: "Firma la imagen usando su huella digital (no su nombre, que puede cambiar) y guarda la firma junto a ella en el registro.",
     steps: [
-      "compose-ref — lee el digest y compone repo@sha256:…",
-      "cosign-sign-image — imagen distroless, por eso command/args",
-      "record-sign",
+      "Calcula la referencia exacta de la imagen por su huella digital",
+      "La firma con la clave privada del proyecto (cosign)",
+      "Sube la firma al registro, guardada junto a la imagen",
     ],
-    results: ["sign-status = OK", "image-ref-by-digest = repo@sha256:…"],
-    why: "Se firma por DIGEST y no por tag porque el tag es mutable y el digest no. El patrón compose-ref existe porque la imagen de cosign es distroless: sin shell no puede leer un archivo ni componer strings.",
+    results: [
+      "La imagen queda firmada y su firma almacenada",
+    ],
+    why: "Se firma la huella digital y no el nombre, porque el nombre se puede reutilizar para otra imagen y la huella no. Así la firma señala a un contenido exacto e irrepetible.",
     agent: null,
   },
 
@@ -404,12 +431,15 @@ const STAGES = [
     kind: "supply",
     verdict: "procedencia",
     status: "todo",
-    what: "Genera y firma una attestation de procedencia (SLSA provenance): quién construyó esta imagen, desde qué commit, con qué pipeline. Se adjunta a la imagen en el registry.",
+    what: "Crea un certificado firmado que dice quién construyó la imagen, desde qué versión del código y con qué pipeline. Se guarda junto a la imagen.",
     steps: [
-      "cosign attest — predicado SLSA provenance + SBOM",
-      "sube la attestation al registry junto a la imagen",
+      "Reúne los datos de construcción: commit de origen, pipeline y fecha",
+      "Los firma como certificado de procedencia (estándar SLSA)",
+      "Adjunta el certificado a la imagen en el registro",
     ],
-    results: ["attest-status = OK | SKIPPED"],
+    results: [
+      "Un certificado verificable de cómo y desde dónde se construyó la imagen",
+    ],
     why: "La firma dice «esta imagen es mía»; la attestation dice «y la construí yo, desde ESTE commit, con ESTE pipeline». Es lo que conecta la imagen desplegada con el clone de la etapa 0. En la charla refuerza el punto clave: toda esta cadena puede estar perfecta y aun así no detener el ataque, porque el PR envenenado no toca la imagen.",
     agent: null,
   },
@@ -424,13 +454,16 @@ const STAGES = [
     kind: "gate",
     verdict: "el corazón",
     status: "built",
-    what: "EL CORAZÓN DEL ATAQUE. El agente rojo (step) envía el PR al agente azul (servicio en su propio sandbox), que decide APPROVE o BLOCK.",
+    what: "EL CORAZÓN DEL ATAQUE. El agente atacante envía el PR al agente revisor, que corre aislado en otro sitio y decide si se aprueba o se bloquea.",
     steps: [
-      "red-open-pr — red-attacker submit --blue-url … (stdout = la decisión)",
-      "simulate-merge — el merge es SIMULADO: el runner no tiene RBAC de merge, a propósito",
+      "El agente atacante envía el PR al agente revisor por la red",
+      "El revisor lo analiza y responde: aprobado o bloqueado",
+      "Si aprueba, aquí se fusionaría el PR (en la demo solo se simula)",
     ],
-    results: ["decision = APPROVE | BLOCK"],
-    why: "El step del rojo no tiene token de API ni salida a internet: por NetworkPolicy solo puede hablar con el azul. El azul corre como servicio aparte para que el ataque tenga que cruzar una frontera de red real, no una llamada de función.",
+    results: [
+      "La decisión del revisor: APROBADO o BLOQUEADO",
+    ],
+    why: "El atacante no tiene credenciales del clúster ni salida a internet: lo único que puede hacer es hablar con el revisor. Y el revisor corre aparte, para que el ataque tenga que cruzar la red de verdad y no sea una simple llamada interna.",
     agent: "blue",
   },
 
@@ -444,13 +477,15 @@ const STAGES = [
     kind: "supply",
     verdict: "verifica OK",
     status: "built",
-    what: "cosign verifica la firma de la imagen por digest con la clave pública. En la demo la firma es VÁLIDA.",
+    what: "Comprueba con la clave pública que la firma de la imagen es auténtica. En la demo, lo es.",
     steps: [
-      "compose-ref — misma ref por digest",
-      "cosign-verify — con cosign.pub",
-      "record-verify",
+      "Localiza la imagen por su huella digital",
+      "Comprueba la firma con la clave pública (cosign)",
+      "Si la firma no cuadrara, el pipeline se detiene aquí",
     ],
-    results: ["verify-status = OK | FAIL | SKIPPED"],
+    results: [
+      "Si la firma es válida o no",
+    ],
     why: "PUNTO CLAVE DE LA CHARLA: la firma verifica correctamente porque el PR envenenado NO tocó la imagen — solo tocó CONFIG. La cadena de supply chain está intacta y aun así el ataque sigue vivo. La firma es necesaria y no es suficiente.",
     agent: null,
   },
@@ -465,12 +500,14 @@ const STAGES = [
     kind: "deploy",
     verdict: "rechazado",
     status: "built",
-    what: "Solo corre si decision==APPROVE Y verify-status==OK. El agente usa su credencial real (sample-app-deployer) e intenta desplegar dos veces. Kyverno rechaza ambas.",
+    what: "Solo llega aquí si el revisor aprobó y la firma es válida. El agente intenta desplegar dos veces con su credencial real, y el control de admisión rechaza ambos intentos.",
     steps: [
-      "agent-deploy — intento 1: el manifiesto del PR tal cual → sin aprobación humana",
-      "agent-deploy — intento 2: el agente se pone él mismo la anotación → no viene de GitOps",
+      "Intento 1: aplica el manifiesto del PR tal cual → Kyverno lo rechaza porque falta la aprobación de una persona",
+      "Intento 2: el agente se pone él mismo la marca de aprobado → Kyverno lo rechaza porque el cambio no viene de Git",
     ],
-    results: ["admission = REJECTED | ADMITTED"],
+    results: [
+      "El despliegue queda RECHAZADO: el ataque muere aquí",
+    ],
     why: "Aquí cierra la narrativa: el agente aprobó, la firma es válida y el agente SÍ tiene credencial. Y no entra. No porque el modelo acertara, sino porque la plataforma exige aprobación humana Y que el cambio lo aplique Argo CD.",
     agent: null,
   },
@@ -546,8 +583,8 @@ const AGENTS = {
 
 const PLATFORM = [
   { id:'zot', n:'Zot registry', sub:'zot.registry.svc:5000', color:'var(--teal)',
-    what:'Registry OCI interno. Guarda la imagen de la app y, junto a ella, la firma de cosign como artefacto OCI.',
-    bullets:['HTTP interno sin auth → las herramientas usan --insecure','build empuja · trivy escanea · cosign firma y verifica'] },
+    what:'El almacén de imágenes del clúster. Guarda la imagen construida y, pegadas a ella, su firma y su certificado de origen.',
+    bullets:['Solo accesible desde dentro del clúster: no está expuesto a internet','Aquí se guarda la imagen, su firma y su certificado de origen','Va por HTTP interno sin autenticación — simplificación del laboratorio; en producción iría con TLS y credenciales'] },
   { id:'vllm', n:'vLLM · Qwen3-8B', sub:'vllm.inference.svc:8000/v1', color:'var(--teal)',
     what:'El LLM corre DENTRO del clúster, con API compatible con OpenAI. Ningún agente sale a internet ni usa API key.',
     bullets:['LLM_PROVIDER=openai-compatible · LLM_MODEL=qwen3-8b','Aplica el esquema JSON token a token (structured_outputs)','Sin egress 443 · sin secreto que versionar','Modo thinking: temperature 0.6 / top_p 0.95'] },
@@ -888,7 +925,9 @@ link(`M${sx_('gate-blue')+150},${PIPE_Y+BOX_H+18}V${PIPE_Y+BOX_H+4}H${sx_('gate-
 // build → Zot ; sign/verify ↔ Zot
 link(`M${scx_('build')},${PIPE_Y}V236H${platX[0]+125}V158`, '#39c5bb','ateal','3 3',
   ['build','zot']);
-link(`M${scx_('sign')},${PIPE_Y}V214H${platX[0]+180}V158`, '#39c5bb','ateal','3 3',
+// sign/verify ↔ registro: baja por debajo de la fila de etapas y vuelve por la
+// izquierda. Subiendo cruzaba por encima de media docena de cajas.
+link(`M${scx_('sign')},${PIPE_Y+BOX_H}V${PIPE_Y+BOX_H+128}H${platX[0]+180}V158`, '#39c5bb','ateal','3 3',
   ['sign','verify','trivy-scan','zot']);
 
 // deploy-gitops → Kyverno (el rechazo)
@@ -979,17 +1018,13 @@ function selectStage(id){
     <h3>Y esto para qué</h3>
     <div class="note ${s.id==='deploy-gitops'?'ok':(s.id==='verify'||s.id==='gate-blue')?'crit':''}">${esc(s.so || s.why)}</div>
 
-    <details>
+    <details open>
       <summary>Detalle técnico</summary>
       <h3>Qué hace exactamente</h3><p>${esc(s.what)}</p>
-      <h3>Pasos internos</h3>
-      <ul>${s.steps.map(x=>{
-        const i = x.indexOf(' — ');
-        return i>0 ? `<li><code>${esc(x.slice(0,i))}</code> ${esc(x.slice(i+3))}</li>`
-                   : `<li>${esc(x)}</li>`;
-      }).join('')}</ul>
-      <h3>Qué deja para las siguientes etapas</h3>
-      <ul>${s.results.map(r=>`<li><code>${esc(r)}</code></li>`).join('')}</ul>
+      <h3>Qué hace, paso a paso</h3>
+      <ul>${s.steps.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+      <h3>Con qué se queda el pipeline</h3>
+      <ul>${s.results.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>
       <h3>Por qué está diseñada así</h3>
       <div class="note">${esc(s.why)}</div>
     </details>
@@ -1013,7 +1048,7 @@ function showAgent(key){
     <h3>La frontera que importa</h3>
     <div class="note ${key==='blue'?'crit':''}">${esc(d.guard)}</div>
 
-    <details>
+    <details open>
       <summary>Detalle técnico</summary>
       <h3>Cómo funciona</h3><p>${esc(d.what)}</p>
       <h3>Claves</h3>
