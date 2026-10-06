@@ -240,9 +240,9 @@ const STAGES = [
     so: "Todo lo que viene después analiza ESTE código. Si el origen no es fiable, nada de lo que sigue lo es.",
     col: 0,
     n: "0 · git-clone",
-    sub: "clona el PR desde GitHub",
+    sub: "trae el código del PR",
     kind: "source",
-    verdict: "la fuente",
+    verdict: "el origen",
     status: "todo",
     what: "Descarga el repositorio en la versión exacta que propone el PR. Todo lo que el pipeline analiza, construye y firma sale de aquí.",
     steps: [
@@ -264,7 +264,7 @@ const STAGES = [
     so: "Si el código no pasa sus propias pruebas, no merece la pena seguir gastando tiempo en él.",
     col: 1,
     n: "1 · test",
-    sub: "unit tests + lint",
+    sub: "pasa las pruebas",
     kind: "scan",
     verdict: "calidad",
     status: "todo",
@@ -286,9 +286,9 @@ const STAGES = [
     so: "Encuentra problemas ANTES de construir nada. Es lo más barato: corregir aquí cuesta minutos.",
     col: 2,
     n: "2 · sast",
-    sub: "semgrep + gitleaks",
+    sub: "busca fallos y secretos",
     kind: "scan",
-    verdict: "informativo",
+    verdict: "solo avisa",
     status: "built",
     what: "Revisa el código antes de construir nada, que es cuando corregir sale más barato. Dos herramientas: una busca código inseguro, la otra busca secretos.",
     steps: [
@@ -309,9 +309,9 @@ const STAGES = [
     so: "A partir de aquí ya existe «el producto»: lo que de verdad acabaría ejecutándose.",
     col: 3,
     n: "3 · build",
-    sub: "kaniko → registry Zot",
+    sub: "crea la imagen",
     kind: "build",
-    verdict: "push real",
+    verdict: "imagen real",
     status: "built",
     what: "Construye la imagen del contenedor y la sube de verdad al registro interno del clúster. Guarda además una copia local y su huella digital.",
     steps: [
@@ -333,9 +333,9 @@ const STAGES = [
     so: "Es la etiqueta nutricional del contenedor. Sin ella no sabes qué estás desplegando.",
     col: 4,
     n: "4 · sbom",
-    sub: "Syft (CycloneDX + SPDX)",
+    sub: "lista qué lleva dentro",
     kind: "scan",
-    verdict: "artefacto",
+    verdict: "inventario",
     status: "built",
     what: "Genera el inventario de todo lo que contiene la imagen, leyendo la copia local en vez de descargarla otra vez.",
     steps: [
@@ -355,7 +355,7 @@ const STAGES = [
     so: "Te dice qué partes de tu imagen tienen fallos públicos que alguien podría aprovechar.",
     col: 5,
     n: "5 · trivy-scan",
-    sub: "Trivy sobre la imagen",
+    sub: "busca vulnerabilidades",
     kind: "scan",
     verdict: "informativo",
     status: "built",
@@ -380,7 +380,7 @@ const STAGES = [
     so: "No arregla nada solo: propone, y una persona decide. Bajó de 37 a 13 vulnerabilidades graves.",
     col: 6,
     n: "5b · remediation",
-    sub: "agente de remediación",
+    sub: "la IA propone arreglos",
     kind: "agentstage",
     verdict: "informativo",
     status: "built",
@@ -404,7 +404,7 @@ const STAGES = [
     so: "Luego cualquiera puede comprobar que la imagen es la tuya y que nadie la cambió por el camino.",
     col: 7,
     n: "6 · sign",
-    sub: "cosign firma por digest",
+    sub: "sella la imagen",
     kind: "supply",
     verdict: "firma real",
     status: "built",
@@ -427,9 +427,9 @@ const STAGES = [
     so: "La firma dice «es mía». Esto dice «y la hice así, desde aquí». Es la trazabilidad completa.",
     col: 8,
     n: "7 · attest",
-    sub: "procedencia SLSA",
+    sub: "certifica su origen",
     kind: "supply",
-    verdict: "procedencia",
+    verdict: "certificado",
     status: "todo",
     what: "Crea un certificado firmado que dice quién construyó la imagen, desde qué versión del código y con qué pipeline. Se guarda junto a la imagen.",
     steps: [
@@ -450,7 +450,7 @@ const STAGES = [
     so: "Aquí es donde ocurre el ataque: convencer al revisor de que apruebe algo que no debería.",
     col: 9,
     n: "8 · gate-blue",
-    sub: "rojo → azul (A2A)",
+    sub: "el revisor decide",
     kind: "gate",
     verdict: "el corazón",
     status: "built",
@@ -473,9 +473,9 @@ const STAGES = [
     so: "Sale OK… y aun así el ataque sigue vivo, porque el PR no tocó la imagen sino la configuración.",
     col: 10,
     n: "9 · verify",
-    sub: "cosign verifica",
+    sub: "comprueba el sello",
     kind: "supply",
-    verdict: "verifica OK",
+    verdict: "sello válido",
     status: "built",
     what: "Comprueba con la clave pública que la firma de la imagen es auténtica. En la demo, lo es.",
     steps: [
@@ -496,7 +496,7 @@ const STAGES = [
     so: "Y no lo consigue. Kyverno lo rechaza dos veces: aquí es donde el ataque muere.",
     col: 11,
     n: "10 · deploy-gitops",
-    sub: "el agente despliega",
+    sub: "intenta desplegar",
     kind: "deploy",
     verdict: "rechazado",
     status: "built",
@@ -516,88 +516,88 @@ const STAGES = [
 const AGENTS = {
   remediation:{
     n:'devsecops-remediation-agent', ns:'devsecops-agent', color:'var(--purple)',
-    short:'Agente de remediación', brief:'Analiza las vulns con el LLM y propone el parche.',
-    role:'Analiza vulnerabilidades con el LLM y propone el parche. La persona confirma.',
+    short:'Agente de remediación', brief:'Estudia las vulnerabilidades y propone cómo arreglarlas.',
+    role:'Estudia las vulnerabilidades encontradas y propone un arreglo concreto. Quien decide si se aplica es una persona.',
     llm:true, mcp:true, under:'remediation',
     detail:{
-      what:'Recibe los JSON de Trivy y el Containerfile. El código calcula HECHOS a partir del grafo DependsOn (qué paquete carga de verdad la app, qué usuario corre, qué comando arranca). El modelo decide sobre esos hechos, acotado por un esquema JSON generado por petición. Luego el código VERIFICA y corrige al modelo.',
+      what:'Primero el código calcula hechos comprobables: qué librerías usa de verdad la aplicación, con qué usuario arranca y qué comando ejecuta. El modelo razona solo sobre esos hechos, con un formato de respuesta cerrado. Después el código revisa la respuesta y corrige al modelo si se inventó algo.',
       bullets:[
-        'El modelo decide · el esquema acota · el código verifica',
-        'vLLM aplica el esquema token a token (structured_outputs)',
-        'El verificador registra cada corrección y se muestra en Backstage',
-        'Escribe el parche el código, nunca el modelo (allowlist cerrada de líneas)',
-        'Resultado medido: 37 → 13 vulnerabilidades HIGH, nginx -t OK, HTTP 200'
+        'La idea: el modelo decide, el formato lo acota, el código lo verifica',
+        'El modelo solo puede responder con un formato cerrado: no puede divagar',
+        'Cada vez que el código corrige al modelo queda registrado y se muestra',
+        'El arreglo lo escribe el código, nunca el modelo directamente',
+        'Resultado medido: de 37 a 13 vulnerabilidades graves, con la app funcionando'
       ],
-      guard:'Dos puertas separadas: el pipeline solo alcanza «advise» (8081). Confirmar una acción vive en otro puerto al que el namespace del pipeline no llega.'
+      guard:'El pipeline solo puede PEDIR consejo. Aplicar un arreglo vive detrás de otra puerta a la que el pipeline no llega: hace falta que una persona lo confirme.'
     }
   },
   blue:{
     n:'blue-reviewer  ·  blue-reviewer-hardened', ns:'devsecops-duel', color:'var(--blue)',
-    short:'Agente AZUL · revisor', brief:'Decide APPROVE o BLOCK. Es el objetivo del ataque.',
-    role:'Revisa el PR y decide APPROVE o BLOCK. Es el objetivo del ataque.',
+    short:'Agente AZUL · revisor', brief:'Decide si el PR se aprueba o se bloquea. Es el objetivo del ataque.',
+    role:'Revisa el PR y decide si pasa o no. Convencerle de que apruebe algo que no debería es todo el ataque.',
     llm:true, mcp:false, under:'gate-blue',
     detail:{
-      what:'Dos Deployments en paralelo: el vulnerable (actos 1–3) y el endurecido (acto 4). AGENT_MODE elige el motor: «rules» (determinista, para que la demo sea reproducible) o «llm» (razona con el vLLM local).',
+      what:'Hay dos versiones corriendo a la vez: una vulnerable (actos 1 a 3) y otra endurecida (acto 4). Y dos motores: uno de reglas fijas, para que la demo salga siempre igual, y otro que razona de verdad con el modelo de IA.',
       bullets:[
-        'AGENT_MODE=rules → obedecer la nota del PR está programado a propósito',
-        'AGENT_MODE=llm + Qwen3-8B → BLOQUEÓ 5 de 5: ve el curl | sh',
-        'Servicio A2A aparte, para que el ataque cruce una frontera de red real',
-        'Sin credenciales de clúster: su único poder es emitir un veredicto'
+        'Con reglas fijas: obedecer la nota del atacante está programado a propósito',
+        'Con el modelo real: bloqueó las 5 veces, porque ve el comando peligroso',
+        'Corre como servicio aparte, así el ataque cruza la red de verdad',
+        'No tiene credenciales: su único poder es dar un veredicto'
       ],
-      guard:'HALLAZGO HONESTO: el APPROVE del acto 3 solo ocurre en modo «rules». Con el modelo real el azul no cae. Un modelo mejor sube el listón; no lo convierte en control.'
+      guard:'Dato honesto: el revisor solo se deja engañar con el motor de reglas fijas, donde obedecer la nota está programado a propósito. Con el modelo real no cayó ninguna de las cinco veces. Un modelo mejor sube el listón, pero no es un control de seguridad.'
     }
   },
   red:{
     n:'red-attacker (step del pipeline)', ns:'devsecops-duel', color:'var(--red)',
-    short:'Agente ROJO · atacante', brief:'Manda el PR al azul. Sin credenciales ni internet.',
-    role:'Abre el PR y lo manda al azul. Corre DENTRO del pipeline.',
+    short:'Agente ROJO · atacante', brief:'Manda el PR al revisor. Sin credenciales ni acceso a internet.',
+    role:'Abre el PR y se lo manda al revisor. Corre dentro del propio pipeline, como cualquier código que llega en un PR.',
     llm:false, mcp:false, under:'gate-blue',
     detail:{
-      what:'No es un Deployment: es un step que corre con la imagen de los agentes y el entrypoint red-attacker. Envía el PR al azul por A2A y escribe en stdout solo la decisión recibida.',
+      what:'No es un servicio aparte: es un paso más del pipeline, igual que compilar o escanear. Envía el PR al revisor por la red y devuelve la decisión que reciba.',
       bullets:[
-        'uid 1001 no-root · readOnlyRootFilesystem · drop ALL',
-        'Sin token de API de Kubernetes y sin salida a internet',
-        'Por NetworkPolicy solo puede hablar con el azul',
-        'El payload del acto 3 toca CONFIG, no la imagen → la firma sigue válida'
+        'Corre sin privilegios y sin poder escribir en su propio sistema de ficheros',
+        'No tiene credenciales del clúster ni salida a internet',
+        'Por reglas de red, lo único con lo que puede hablar es con el revisor',
+        'Su ataque toca la configuración, no la imagen: por eso la firma sigue siendo válida'
       ],
-      guard:'Es el modelo de amenaza realista: código no confiable que entra por un PR y corre en tu CI.'
+      guard:'Esta es la amenaza realista: código que no controlas, que entra por un PR y que tu propio sistema ejecuta.'
     }
   },
   approval:{
     n:'backstage-devsecops-agent', ns:'devsecops-agent', color:'var(--purple)',
-    short:'Agente de aprobación', brief:'¿El azul acertó o lo engañaron? Segunda opinión.',
-    role:'Segunda opinión sobre cada corrida: ¿el azul acertó o lo engañaron?',
+    short:'Agente de aprobación', brief:'¿El revisor acertó o lo engañaron? Da una segunda opinión.',
+    role:'Revisa cada ejecución del pipeline y da una segunda opinión: ¿el revisor acertó, o lo engañaron?',
     llm:true, mcp:true, under:null,
     detail:{
-      what:'Lee las PipelineRuns del clúster (RBAC de solo lectura), reconstruye qué pasó en cada etapa y pide al modelo un veredicto por corrida, citando el lineamiento del catálogo que aplica. No decide nada: informa a la persona en Backstage.',
+      what:'Consulta el historial de ejecuciones (solo lectura), reconstruye qué pasó en cada etapa y pide al modelo un veredicto, citando qué política de seguridad aplica. No decide nada: deja el informe para que lo lea una persona.',
       bullets:[
-        'Un veredicto por corrida, con caché por run (no re-analiza lo ya visto)',
-        'La evidencia de inyección está acotada a líneas literales del diff (enum)',
-        'Cruza señales: «el azul APROBÓ, pero Kyverno RECHAZÓ el despliegue»',
-        'Resultados: acto 1 «acertó» · acto 3 «lo engañaron» · acto 4 «acertó»'
+        'Un veredicto por cada ejecución, y no repite trabajo ya hecho',
+        'Solo puede señalar líneas que existen de verdad: no puede inventarse pruebas',
+        'Cruza señales: «el revisor aprobó, pero la admisión rechazó el despliegue»',
+        'Resultados reales: acto 1 acertó · acto 3 lo engañaron · acto 4 acertó'
       ],
-      guard:'Lee lineamientos del catálogo por MCP con doble control: rol de Keycloak mcp:tool:<name> + relación can_call en OpenFGA.'
+      guard:'Para leer el catálogo de políticas tiene que pasar dos controles de permisos independientes. Aunque alguien se hiciera con el agente, su alcance está acotado de antemano.'
     }
   }
 };
 
 const PLATFORM = [
-  { id:'zot', n:'Zot registry', sub:'zot.registry.svc:5000', color:'var(--teal)',
+  { id:'zot', n:'Almacén de imágenes', sub:'donde vive la imagen, su firma y su certificado', color:'var(--teal)',
     what:'El almacén de imágenes del clúster. Guarda la imagen construida y, pegadas a ella, su firma y su certificado de origen.',
     bullets:['Solo accesible desde dentro del clúster: no está expuesto a internet','Aquí se guarda la imagen, su firma y su certificado de origen','Va por HTTP interno sin autenticación — simplificación del laboratorio; en producción iría con TLS y credenciales'] },
-  { id:'vllm', n:'vLLM · Qwen3-8B', sub:'vllm.inference.svc:8000/v1', color:'var(--teal)',
-    what:'El LLM corre DENTRO del clúster, con API compatible con OpenAI. Ningún agente sale a internet ni usa API key.',
-    bullets:['LLM_PROVIDER=openai-compatible · LLM_MODEL=qwen3-8b','Aplica el esquema JSON token a token (structured_outputs)','Sin egress 443 · sin secreto que versionar','Modo thinking: temperature 0.6 / top_p 0.95'] },
-  { id:'mcp', n:'agentgateway (MCP)', sub:'agentgateway-proxy…/mcp', color:'var(--teal)',
-    what:'Puerta MCP al catálogo de Backstage. Los agentes leen por aquí los 39 lineamientos de seguridad para citar la política que aplica.',
-    bullets:['Herramientas: get-catalog-entity · query-catalog-entities','Doble control: rol Keycloak mcp:tool:<name> + can_call en OpenFGA','El modelo elige qué lineamiento leer (máx. 4 por análisis)'] },
-  { id:'kyverno', n:'Kyverno', sub:'webhook de admisión', color:'var(--amber)',
-    what:'Las dos policies que deciden qué entra al clúster. Es la capa que FRENA el ataque.',
-    bullets:['verify-images → exige firma válida (en ENFORCE). Admite: la imagen ES legítima','require-human-approval → exige aprobación humana Y que lo aplique Argo CD','Esta segunda es la que rechaza los dos intentos del agente'] },
-  { id:'argocd', n:'Argo CD', sub:'5 Applications · ns argocd', color:'var(--green)',
-    what:'Gobierna TODO lo declarativo de la demo. Las Applications viven en el repo del homelab, no en el repo de la charla.',
-    bullets:['…-pipeline → el Pipeline y los agentes azules','…-pipeline-runs → un PipelineRun por acto','…-admission-policies → las policies de Kyverno','…-backstage-agent → los 2 agentes con LLM+MCP','…-sample-app → la app objetivo (el único camino de despliegue válido)'],
-    note:'Las Applications están en homelab-gitops a propósito: así el repo de la charla no puede ampliar sus propios permisos.' }
+  { id:'vllm', n:'El modelo de IA', sub:'corre dentro del clúster, sin salir a internet', color:'var(--teal)',
+    what:'El modelo de inteligencia artificial corre dentro de tu propio clúster. Ningún dato sale a internet y no hace falta contratar un servicio externo.',
+    bullets:['Es Qwen3-8B, un modelo abierto que cabe en una GPU doméstica','Obliga al modelo a responder en el formato exacto que se le pide','Sin salida a internet y sin ninguna clave que guardar','Ningún dato del código sale de tu infraestructura'] },
+  { id:'mcp', n:'Puerta al catálogo', sub:'por aquí los agentes leen las políticas de seguridad', color:'var(--teal)',
+    what:'La puerta por la que los agentes consultan el catálogo de políticas de seguridad de la organización, para poder citar cuál aplica en cada caso.',
+    bullets:['Los agentes consultan aquí las políticas de seguridad de la organización','Dos controles de permisos independientes antes de dejarles leer nada','El modelo elige qué políticas consultar, con un tope de 4 por análisis'] },
+  { id:'kyverno', n:'El control de admisión', sub:'decide qué puede entrar al clúster', color:'var(--amber)',
+    what:'Las dos reglas que deciden qué puede desplegarse en el clúster. Esta es la capa que frena el ataque.',
+    bullets:['Regla 1: la imagen debe estar firmada. Aquí pasa, porque la imagen SÍ es legítima','Regla 2: hace falta que una persona lo apruebe Y que el cambio venga de Git','La segunda regla es la que rechaza los dos intentos del agente'] },
+  { id:'argocd', n:'Argo CD', sub:'aplica en el clúster lo que está escrito en Git', color:'var(--green)',
+    what:'Mantiene el clúster igual a lo que está escrito en Git. Si algo no está en Git, Argo CD no lo despliega.',
+    bullets:['El pipeline y el agente revisor','Una ejecución preparada por cada acto de la demo','Las reglas del control de admisión','Los dos agentes con IA','La aplicación objetivo: el único camino válido para desplegarla'],
+    note:'La configuración de despliegue vive en OTRO repositorio a propósito: así el repo de la charla no puede ampliarse a sí mismo los permisos.' }
 ];
 
 /* ===========================================================================
@@ -679,16 +679,16 @@ const PIPE_W = BAND_W;
 // detalle de implementación y va en el subtítulo.
 band(BAND_X, PIPE_Y-128, PIPE_W, BOX_H+226,
   'EL PIPELINE   ·   aquí corre el código del PR', '#8b98a5',
-  'ns devsecops-duel · carga no confiable, sin credenciales');
+  'aquí se ejecuta código que no controlas: sin credenciales del clúster');
 band(BAND_X, 560, PIPE_W, 150,
   'QUÉ AGENTE ACTÚA EN CADA ETAPA', 'var(--purple)',
-  'ns devsecops-agent · estos sí tienen credenciales, y solo informan');
+  'estos sí tienen credenciales — y aun así solo proponen, nunca aplican');
 band(BAND_X, 60, PIPE_W, 150,
   'DE QUÉ DEPENDE   ·   servicios del clúster', 'var(--teal)',
   'ninguno sale a internet');
 band(BAND_X, 742, PIPE_W, 182,
   'QUIÉN LO GOBIERNA   ·   y quién decide qué entra', 'var(--green)',
-  'Argo CD aplica · Kyverno admite o rechaza');
+  'solo entra lo que está escrito en Git y aprueba una persona');
 
 /* --- plataforma (fila superior) ---------------------------------------- */
 const platX = [PIPE_X+6, PIPE_X+282, PIPE_X+558, PIPE_X+858, PIPE_X+1140];
@@ -713,25 +713,25 @@ PLATFORM.filter(p=>p.id!=='argocd').forEach((p,i)=>{
   g.append('rect').attr('x',PIPE_X+6).attr('y',776).attr('width',364).attr('height',66)
     .attr('rx',9).attr('fill','#0f1d13').attr('stroke','var(--green)').attr('stroke-opacity',.65);
   g.append('text').attr('x',PIPE_X+19).attr('y',801).attr('fill','#dfe9f2')
-    .attr('font-size',13.5).attr('font-weight',650).text('Argo CD  ·  5 Applications');
+    .attr('font-size',13.5).attr('font-weight',650).text('Argo CD');
   g.append('text').attr('x',PIPE_X+19).attr('y',820).attr('fill','#6f8f78')
     .attr('font-size',10.5).attr('font-family','ui-monospace,Menlo,monospace')
-    .text('repo homelab-gitops  →  reconcilia el clúster');
+    .text('mantiene el clúster igual a lo que dice Git');
   g.on('click',()=>showPlatform(p));
 
   // lista de Applications
-  const apps = ['…-pipeline','…-pipeline-runs','…-admission-policies','…-backstage-agent','…-sample-app'];
+  const apps = ['el pipeline','una ejecución por acto','las reglas de admisión','los agentes con IA','la aplicación objetivo'];
   apps.forEach((a,i)=>{
     const x = PIPE_X+400 + (i%3)*296, y = 780 + Math.floor(i/3)*34;
     const g2 = gNodes.append('g').attr('class','node lit').attr('data-id','argocd');
     g2.append('rect').attr('x',x).attr('y',y).attr('width',280).attr('height',26)
       .attr('rx',6).attr('fill','#0d1710').attr('stroke','#255233');
     g2.append('text').attr('x',x+10).attr('y',y+17.5).attr('fill','#9fc9ab')
-      .attr('font-size',11).attr('font-family','ui-monospace,Menlo,monospace').text(a);
+      .attr('font-size',11).text(a);
   });
   gNodes.append('text').attr('x',PIPE_X+6).attr('y',876).attr('fill','#5c6773')
     .attr('font-size',11.5)
-    .text('El único camino de despliegue válido: un humano aprueba en Git y Argo CD sincroniza. El agente no puede hacerse pasar por Argo CD.');
+    .text('El único camino válido: una persona aprueba el cambio en Git, y Argo CD lo aplica. El agente puede falsificar una aprobación, pero no puede hacerse pasar por Argo CD.');
 }
 
 /* --- etapas del pipeline ----------------------------------------------- */
@@ -961,12 +961,12 @@ function intro(){
   panel.html(`
     <h2>Cómo leer esto</h2>
     <p>Un PR entra por la izquierda y recorre el pipeline <b>paso a paso</b>, hasta intentar desplegarse.</p>
-    <h3>Las bandas</h3>
+    <h3>Las cuatro franjas</h3>
     <ul>
-      <li><b>Plataforma</b> — registry, LLM, MCP</li>
-      <li><b>devsecops-duel</b> — carga <b>no confiable</b>, sin credenciales</li>
-      <li><b>devsecops-agent</b> — los agentes que <b>sí</b> las tienen</li>
-      <li><b>Gobierno</b> — Argo CD y la admisión</li>
+      <li><b>De qué depende</b> — los servicios que usa: almacén de imágenes, modelo de IA, catálogo de políticas</li>
+      <li><b>El pipeline</b> — donde corre el código del PR, <b>sin credenciales</b></li>
+      <li><b>Los agentes</b> — quién interviene en cada etapa. Estos <b>sí</b> tienen credenciales, y solo informan</li>
+      <li><b>Quién lo gobierna</b> — quién aplica los cambios y quién decide qué entra</li>
     </ul>
     <h3>El punto de la charla</h3>
     <div class="note crit">El azul <b>aprueba</b>, la firma <b>verifica</b>, el agente
