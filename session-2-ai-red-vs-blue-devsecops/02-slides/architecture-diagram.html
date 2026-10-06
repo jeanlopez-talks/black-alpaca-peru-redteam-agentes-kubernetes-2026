@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<!--
+  Diagrama de arquitectura de la sesión 2 — Black Alpaca 2026.
+
+  QUÉ ES: un mapa navegable de la demo. Responde a "¿dónde actúa cada cosa?":
+  las 9 etapas del pipeline Tekton, qué agente cuelga de cada etapa, en qué
+  namespace corre, quién gobierna cada recurso (Argo CD) y dónde está la
+  frontera que frena el ataque (Kyverno).
+
+  POR QUÉ LAYOUT EXPLÍCITO Y NO AUTO-LAYOUT (mermaid/dagre/cola):
+  el valor de este diagrama es la CORRESPONDENCIA ESPACIAL — el agente debajo
+  de SU etapa, el namespace conteniendo SUS pods, la frontera cruzándose en un
+  punto concreto. Un motor de auto-layout reacomoda nodos para minimizar
+  cruces y destruye justamente esa correspondencia. Aquí las posiciones son
+  datos (campo `x`/`col`), y D3 solo mide texto, dibuja y maneja interacción.
+
+  FUENTE DE VERDAD (verificado, no de memoria):
+    - etapas/steps/params: ../03-gitops/devsecops-pipeline/tekton/pipeline-devsecops.yaml
+    - agentes y su env:    ../03-gitops/backstage/devsecops-agent/deployment-*.yaml
+                           ../03-gitops/devsecops-pipeline/agents/deployment-blue-reviewer*.yaml
+    - Applications Argo CD: `kubectl get applications -n argocd` en el k3s
+    - pods en ejecución:    `kubectl get pods -n devsecops-duel|devsecops-agent`
+
+  USO: abrir el archivo en el navegador (no necesita servidor ni red; D3 va
+  embebido). Clic en una etapa para ver su detalle; «Ver todo» para el panorama.
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Arquitectura de la demo — Red vs Blue en un pipeline DevSecOps</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#141b24; --panel2:#1b2430; --line:#2d3748;
+    --ink:#e6edf3; --dim:#8b98a5; --faint:#5c6773;
+    --red:#f85149; --blue:#58a6ff; --green:#3fb950; --amber:#d29922;
+    --purple:#bc8cff; --teal:#39c5bb;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;}
+  header{padding:18px 26px 12px;border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:19px;font-weight:650;letter-spacing:-.2px}
+  .sub{margin-top:5px;font-size:12.5px;color:var(--dim)}
+  .wrap{display:flex;gap:0;align-items:stretch;min-height:calc(100vh - 128px)}
+  .canvas{flex:1;min-width:0;overflow:auto;padding:14px 10px 30px}
+  aside{width:362px;flex:none;border-left:1px solid var(--line);
+    background:var(--panel);padding:16px 18px 30px;overflow:auto}
+  /* El SVG escala al ancho disponible (el panel lateral se lleva 362px). Sin
+     esto la última etapa — deploy-gitops, el desenlace — queda fuera de vista. */
+  svg{display:block;margin:0 auto;width:100%;height:auto;max-width:1740px}
+  text{font-family:inherit;-webkit-font-smoothing:antialiased}
+  .mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace}
+  .stage{cursor:pointer}
+  .stage rect.box{transition:stroke .12s,filter .12s}
+  .stage:hover rect.box{stroke:var(--ink)}
+  .stage.sel rect.box{stroke:var(--ink);stroke-width:2.2}
+  .dimmed{opacity:.17;transition:opacity .15s}
+  .lit{opacity:1;transition:opacity .15s}
+  /* Controles */
+  .bar{display:flex;gap:7px;flex-wrap:wrap;padding:10px 26px 12px;
+    border-bottom:1px solid var(--line);align-items:center}
+  button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+    border-radius:7px;padding:6px 11px;font-size:12px;cursor:pointer;
+    font-family:inherit;transition:background .12s,border-color .12s}
+  button:hover{background:#243040;border-color:var(--faint)}
+  button.on{background:#1f6feb;border-color:#1f6feb;color:#fff}
+  .barlbl{font-size:11px;color:var(--faint);text-transform:uppercase;
+    letter-spacing:.7px;margin-right:3px}
+  .sep{width:1px;height:20px;background:var(--line);margin:0 6px}
+  /* Panel lateral */
+  aside h2{margin:0 0 3px;font-size:15px;font-weight:650}
+  aside .tag{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:999px;
+    border:1px solid var(--line);color:var(--dim);margin:0 4px 8px 0}
+  aside h3{margin:17px 0 7px;font-size:11px;text-transform:uppercase;
+    letter-spacing:.8px;color:var(--faint);font-weight:650}
+  aside p{margin:0 0 9px;font-size:13px;line-height:1.55;color:#c9d4e0}
+  aside .kv{font-size:12px;line-height:1.6;color:#c9d4e0}
+  aside .kv b{color:var(--ink);font-weight:600}
+  aside ul{margin:0 0 10px;padding-left:17px;font-size:12.5px;line-height:1.6;color:#c9d4e0}
+  aside li{margin-bottom:4px}
+  aside code{background:#0b0f14;border:1px solid var(--line);border-radius:4px;
+    padding:1px 5px;font-size:11.5px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#a9b6c3;
+    word-break:break-all}
+  .note{border-left:2px solid var(--amber);padding:8px 11px;background:#1d1a0e;
+    border-radius:0 6px 6px 0;font-size:12.5px;line-height:1.55;color:#e3d8b5;margin:10px 0}
+  .note.crit{border-color:var(--red);background:#1f1113;color:#f0c0bd}
+  .note.ok{border-color:var(--green);background:#0f1c12;color:#b7e3bd}
+  .hint{font-size:12px;color:var(--faint);line-height:1.6}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;padding:9px 26px 11px;font-size:11.5px;
+    color:var(--dim);border-bottom:1px solid var(--line)}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+  footer{padding:11px 26px;border-top:1px solid var(--line);font-size:11px;color:var(--faint)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>¿Dónde actúa cada cosa? — pipeline, agentes, GitOps y admisión</h1>
+  <div class="sub">Sesión 2 · Black Alpaca 2026 · clúster k3s propio · verificado contra el clúster, no de memoria</div>
+</header>
+
+<div class="bar">
+  <span class="barlbl">Capas</span>
+  <button data-layer="all" class="on">Ver todo</button>
+  <button data-layer="pipeline">Solo pipeline</button>
+  <button data-layer="agents">Solo agentes</button>
+  <button data-layer="gitops">Solo GitOps</button>
+  <div class="sep"></div>
+  <span class="barlbl">Recorrido</span>
+  <button id="act3">Camino del ataque (acto 3)</button>
+  <button id="reset">Limpiar</button>
+</div>
+
+<div class="legend">
+  <span><i style="background:#2b3a4d"></i>Etapa Tekton (task)</span>
+  <span><i style="background:var(--red)"></i>Agente rojo / atacante</span>
+  <span><i style="background:var(--blue)"></i>Agente azul / revisor</span>
+  <span><i style="background:var(--purple)"></i>Agente con LLM + MCP</span>
+  <span><i style="background:var(--teal)"></i>Plataforma (registry, vLLM, MCP)</span>
+  <span><i style="background:var(--green)"></i>Argo CD / Git</span>
+  <span><i style="background:var(--amber)"></i>Kyverno / admisión</span>
+</div>
+
+<div class="wrap">
+  <div class="canvas"><svg id="d"></svg></div>
+  <aside id="panel"></aside>
+</div>
+
+<footer>
+  Fuentes: <span class="mono">03-gitops/devsecops-pipeline/tekton/pipeline-devsecops.yaml</span> ·
+  <span class="mono">03-gitops/backstage/devsecops-agent/</span> ·
+  <span class="mono">kubectl get applications -n argocd</span>
+</footer>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+/* ===========================================================================
+   DATOS — el layout es dato, no resultado de un solo motor de fuerzas.
+   `col` es la columna (0..8) de la etapa en la banda del pipeline.
+   =========================================================================== */
+
+const STAGES = [
+  { id:'sast', col:0, n:'1 · sast', sub:'semgrep + gitleaks',
+    kind:'scan', verdict:'informativo',
+    what:'Escanea el CÓDIGO del PR antes de construir nada (shift-left): semgrep para patrones de seguridad y gitleaks para secretos.',
+    steps:['materialize-sast-source — copia la fuente al workspace','semgrep — rulesets p/ci + p/secrets','gitleaks — detect --no-git','sast-verdict — decide OK / FINDINGS / ERROR'],
+    results:['status = OK | FINDINGS | ERROR'],
+    why:'Es INFORMATIVO a propósito (sast-blocking=false). Si bloqueara, la demo nunca llegaría al gate — y el mensaje de la charla es que la frontera real está más abajo, no en el linter.',
+    agent:null },
+
+  { id:'build', col:1, n:'2 · build', sub:'kaniko → registry Zot',
+    kind:'build', verdict:'push real',
+    what:'kaniko construye la imagen de la app y la EMPUJA de verdad al registry interno Zot. Deja además el tar OCI y el digest en el workspace.',
+    steps:['materialize-source — Containerfile + index.html','kaniko-build-push — build + push (--insecure, Zot es HTTP interno)','record-image-ref — fija el Result'],
+    results:['image-ref = zot.registry.svc…/sample-app:latest'],
+    why:'Único step del pipeline que corre como root (uid 0), y está documentado como excepción de compliance: kaniko desempaqueta el rootfs en «/» y eso requiere uid 0. Mitigado con drop ALL + solo 6 capabilities, sin token de API y acotado a esta sola task.',
+    agent:null },
+
+  { id:'sbom', col:2, n:'3 · sbom', sub:'Syft (CycloneDX + SPDX)',
+    kind:'scan', verdict:'artefacto',
+    what:'Syft genera el inventario de componentes de la imagen, leyendo el TAR OCI local (no el registry).',
+    steps:['syft-sbom — docker-archive: → cyclonedx-json + spdx-json','record-sbom'],
+    results:['sbom-status = OK | SKIPPED'],
+    why:'Lee el tar y no el registry porque es el mismo contenido bit a bit que se empujó, no necesita red ni flags insecure, y es reproducible. Describe exactamente la imagen que luego se firma por digest.',
+    agent:null },
+
+  { id:'trivy-scan', col:3, n:'4 · trivy-scan', sub:'Trivy sobre la imagen',
+    kind:'scan', verdict:'informativo',
+    what:'Trivy hace pull de la imagen DEL REGISTRY y la escanea. También escanea el filesystem del contexto (secretos, misconfig). Política HIGH,CRITICAL.',
+    steps:['trivy fs — vuln,secret,misconfig','trivy image --insecure — la imagen real del registry','+ salida JSON con --list-all-pkgs para el agente de remediación'],
+    results:['status = OK | FINDINGS | SKIPPED'],
+    why:'El flag --list-all-pkgs no es decorativo: produce el grafo DependsOn con el que el agente de remediación calcula qué carga de verdad la app. Sin ese grafo el modelo opinaría sobre supuestos.',
+    agent:null },
+
+  { id:'remediation', col:4, n:'4b · remediation', sub:'agente de remediación',
+    kind:'agentstage', verdict:'informativo',
+    what:'Un cliente A2A manda los JSON de Trivy y el Containerfile al agente de remediación, que responde con el análisis priorizado. No aplica nada.',
+    steps:['advise — remediation-request → agente (puerto 8081, solo la skill «advise»)'],
+    results:['(sin Result; el informe queda en el agente y en Backstage)'],
+    why:'Desde aquí corre código que viene del PR, así que solo alcanza la puerta «advise» por NetworkPolicy. Confirmar una corrección está en OTRO puerto al que este namespace no llega: el pipeline puede pedir consejo, nunca aplicarlo.',
+    agent:'remediation' },
+
+  { id:'sign', col:5, n:'5 · sign', sub:'cosign firma por digest',
+    kind:'supply', verdict:'firma real',
+    what:'cosign firma la imagen del registry POR DIGEST con la clave del duelo y sube la firma al registry como artefacto OCI.',
+    steps:['compose-ref — lee el digest y compone repo@sha256:… (step result)','cosign-sign-image — imagen distroless, por eso command/args y no script','record-sign'],
+    results:['sign-status = OK','image-ref-by-digest = repo@sha256:…'],
+    why:'Se firma por DIGEST y no por tag porque el tag es mutable y el digest no. El patrón compose-ref existe porque la imagen de cosign es distroless: sin shell no puede leer un archivo ni componer strings, así que un step previo con shell le pasa la ref ya resuelta.',
+    agent:null },
+
+  { id:'gate-blue', col:6, n:'6 · gate-blue', sub:'rojo → azul (A2A)',
+    kind:'gate', verdict:'el corazón',
+    what:'EL CORAZÓN DEL ATAQUE. El agente rojo (step) envía el PR al agente azul (servicio en su propio sandbox), que decide APPROVE o BLOCK.',
+    steps:['red-open-pr — red-attacker submit --blue-url … (stdout = la decisión)','simulate-merge — el merge es SIMULADO: el runner no tiene RBAC de merge, a propósito'],
+    results:['decision = APPROVE | BLOCK'],
+    why:'El step del rojo no tiene token de API ni salida a internet: por NetworkPolicy solo puede hablar con el azul. El azul corre como servicio aparte para que el ataque tenga que cruzar una frontera de red real, no una llamada de función.',
+    agent:'blue' },
+
+  { id:'verify', col:7, n:'7 · verify', sub:'cosign verifica',
+    kind:'supply', verdict:'verifica OK',
+    what:'cosign verifica la firma de la imagen por digest con la clave pública. En la demo la firma es VÁLIDA.',
+    steps:['compose-ref — misma ref por digest','cosign-verify — con cosign.pub','record-verify'],
+    results:['verify-status = OK | FAIL | SKIPPED'],
+    why:'PUNTO CLAVE DE LA CHARLA: la firma verifica correctamente porque el PR envenenado NO tocó la imagen — solo tocó CONFIG. La cadena de supply chain está intacta y aun así el ataque sigue vivo. La firma es necesaria y no es suficiente.',
+    agent:null },
+
+  { id:'deploy-gitops', col:8, n:'8 · deploy-gitops', sub:'el agente intenta desplegar',
+    kind:'deploy', verdict:'rechazado',
+    what:'Solo corre si decision==APPROVE Y verify-status==OK. El agente usa su credencial real (sample-app-deployer) e intenta desplegar dos veces. Kyverno rechaza ambas.',
+    steps:['agent-deploy — intento 1: el manifiesto del PR tal cual → sin aprobación humana','agent-deploy — intento 2: el agente se pone él mismo la anotación → no viene de GitOps'],
+    results:['admission = REJECTED | ADMITTED'],
+    why:'Aquí cierra la narrativa: el agente aprobó, la firma es válida y el agente SÍ tiene credencial. Y no entra. No porque el modelo acertara, sino porque la plataforma exige aprobación humana Y que el cambio lo aplique Argo CD. El agente puede falsificar una anotación; no puede hacerse pasar por GitOps.',
+    agent:null }
+];
+
+const AGENTS = {
+  remediation:{
+    n:'devsecops-remediation-agent', ns:'devsecops-agent', color:'var(--purple)',
+    role:'Analiza vulnerabilidades con el LLM y propone el parche. La persona confirma.',
+    llm:true, mcp:true, under:'remediation',
+    detail:{
+      what:'Recibe los JSON de Trivy y el Containerfile. El código calcula HECHOS a partir del grafo DependsOn (qué paquete carga de verdad la app, qué usuario corre, qué comando arranca). El modelo decide sobre esos hechos, acotado por un esquema JSON generado por petición. Luego el código VERIFICA y corrige al modelo.',
+      bullets:[
+        'El modelo decide · el esquema acota · el código verifica',
+        'vLLM aplica el esquema token a token (structured_outputs)',
+        'El verificador registra cada corrección y se muestra en Backstage',
+        'Escribe el parche el código, nunca el modelo (allowlist cerrada de líneas)',
+        'Resultado medido: 37 → 13 vulnerabilidades HIGH, nginx -t OK, HTTP 200'
+      ],
+      guard:'Dos puertas separadas: el pipeline solo alcanza «advise» (8081). Confirmar una acción vive en otro puerto al que el namespace del pipeline no llega.'
+    }
+  },
+  blue:{
+    n:'blue-reviewer  ·  blue-reviewer-hardened', ns:'devsecops-duel', color:'var(--blue)',
+    role:'Revisa el PR y decide APPROVE o BLOCK. Es el objetivo del ataque.',
+    llm:true, mcp:false, under:'gate-blue',
+    detail:{
+      what:'Dos Deployments en paralelo: el vulnerable (actos 1–3) y el endurecido (acto 4). AGENT_MODE elige el motor: «rules» (determinista, para que la demo sea reproducible) o «llm» (razona con el vLLM local).',
+      bullets:[
+        'AGENT_MODE=rules → obedecer la nota del PR está programado a propósito',
+        'AGENT_MODE=llm + Qwen3-8B → BLOQUEÓ 5 de 5: ve el curl | sh',
+        'Servicio A2A aparte, para que el ataque cruce una frontera de red real',
+        'Sin credenciales de clúster: su único poder es emitir un veredicto'
+      ],
+      guard:'HALLAZGO HONESTO: el APPROVE del acto 3 solo ocurre en modo «rules». Con el modelo real el azul no cae. Un modelo mejor sube el listón; no lo convierte en control.'
+    }
+  },
+  red:{
+    n:'red-attacker (step del pipeline)', ns:'devsecops-duel', color:'var(--red)',
+    role:'Abre el PR y lo manda al azul. Corre DENTRO del pipeline.',
+    llm:false, mcp:false, under:'gate-blue',
+    detail:{
+      what:'No es un Deployment: es un step que corre con la imagen de los agentes y el entrypoint red-attacker. Envía el PR al azul por A2A y escribe en stdout solo la decisión recibida.',
+      bullets:[
+        'uid 1001 no-root · readOnlyRootFilesystem · drop ALL',
+        'Sin token de API de Kubernetes y sin salida a internet',
+        'Por NetworkPolicy solo puede hablar con el azul',
+        'El payload del acto 3 toca CONFIG, no la imagen → la firma sigue válida'
+      ],
+      guard:'Es el modelo de amenaza realista: código no confiable que entra por un PR y corre en tu CI.'
+    }
+  },
+  approval:{
+    n:'backstage-devsecops-agent', ns:'devsecops-agent', color:'var(--purple)',
+    role:'Segunda opinión sobre cada corrida: ¿el azul acertó o lo engañaron?',
+    llm:true, mcp:true, under:null,
+    detail:{
+      what:'Lee las PipelineRuns del clúster (RBAC de solo lectura), reconstruye qué pasó en cada etapa y pide al modelo un veredicto por corrida, citando el lineamiento del catálogo que aplica. No decide nada: informa a la persona en Backstage.',
+      bullets:[
+        'Un veredicto por corrida, con caché por run (no re-analiza lo ya visto)',
+        'La evidencia de inyección está acotada a líneas literales del diff (enum)',
+        'Cruza señales: «el azul APROBÓ, pero Kyverno RECHAZÓ el despliegue»',
+        'Resultados: acto 1 «acertó» · acto 3 «lo engañaron» · acto 4 «acertó»'
+      ],
+      guard:'Lee lineamientos del catálogo por MCP con doble control: rol de Keycloak mcp:tool:<name> + relación can_call en OpenFGA.'
+    }
+  }
+};
+
+const PLATFORM = [
+  { id:'zot', n:'Zot registry', sub:'zot.registry.svc:5000', color:'var(--teal)',
+    what:'Registry OCI interno. Guarda la imagen de la app y, junto a ella, la firma de cosign como artefacto OCI.',
+    bullets:['HTTP interno sin auth → las herramientas usan --insecure','build empuja · trivy escanea · cosign firma y verifica'] },
+  { id:'vllm', n:'vLLM · Qwen3-8B', sub:'vllm.inference.svc:8000/v1', color:'var(--teal)',
+    what:'El LLM corre DENTRO del clúster, con API compatible con OpenAI. Ningún agente sale a internet ni usa API key.',
+    bullets:['LLM_PROVIDER=openai-compatible · LLM_MODEL=qwen3-8b','Aplica el esquema JSON token a token (structured_outputs)','Sin egress 443 · sin secreto que versionar','Modo thinking: temperature 0.6 / top_p 0.95'] },
+  { id:'mcp', n:'agentgateway (MCP)', sub:'agentgateway-proxy…/mcp', color:'var(--teal)',
+    what:'Puerta MCP al catálogo de Backstage. Los agentes leen por aquí los 39 lineamientos de seguridad para citar la política que aplica.',
+    bullets:['Herramientas: get-catalog-entity · query-catalog-entities','Doble control: rol Keycloak mcp:tool:<name> + can_call en OpenFGA','El modelo elige qué lineamiento leer (máx. 4 por análisis)'] },
+  { id:'kyverno', n:'Kyverno', sub:'webhook de admisión', color:'var(--amber)',
+    what:'Las dos policies que deciden qué entra al clúster. Es la capa que FRENA el ataque.',
+    bullets:['verify-images → exige firma válida (en ENFORCE). Admite: la imagen ES legítima','require-human-approval → exige aprobación humana Y que lo aplique Argo CD','Esta segunda es la que rechaza los dos intentos del agente'] },
+  { id:'argocd', n:'Argo CD', sub:'5 Applications · ns argocd', color:'var(--green)',
+    what:'Gobierna TODO lo declarativo de la demo. Las Applications viven en el repo del homelab, no en el repo de la charla.',
+    bullets:['…-pipeline → el Pipeline y los agentes azules','…-pipeline-runs → un PipelineRun por acto','…-admission-policies → las policies de Kyverno','…-backstage-agent → los 2 agentes con LLM+MCP','…-sample-app → la app objetivo (el único camino de despliegue válido)'],
+    note:'Las Applications están en homelab-gitops a propósito: así el repo de la charla no puede ampliar sus propios permisos.' }
+];
+
+/* ===========================================================================
+   LAYOUT — geometría explícita
+   =========================================================================== */
+// El ancho se deriva de la geometría (9 columnas + márgenes), no se fija a ojo:
+// así añadir una etapa no deja nada cortado fuera del viewBox.
+const COL_W = 158, COL_GAP = 14, PIPE_X = 86, PIPE_Y = 292;
+const W = PIPE_X + 9 * (COL_W + COL_GAP) - COL_GAP + 120;
+const BOX_H = 76;
+const colX = c => PIPE_X + c * (COL_W + COL_GAP);
+const colCX = c => colX(c) + COL_W / 2;
+const H = 1026;
+
+// Solo viewBox: el ancho/alto reales los pone el CSS para que escale al panel.
+const svg = d3.select('#d').attr('viewBox', `0 0 ${W} ${H}`)
+  .attr('preserveAspectRatio', 'xMidYMin meet');
+
+// defs: flechas
+const defs = svg.append('defs');
+[['a','#7d8da0'],['ared','#f85149'],['ablue','#58a6ff'],
+ ['agreen','#3fb950'],['aamber','#d29922'],['apurple','#bc8cff'],['ateal','#39c5bb']]
+.forEach(([id,c])=>{
+  defs.append('marker').attr('id',id).attr('viewBox','0 0 10 10')
+    .attr('refX',9).attr('refY',5).attr('markerWidth',6).attr('markerHeight',6)
+    .attr('orient','auto-start-reverse')
+    .append('path').attr('d','M0,0L10,5L0,10z').attr('fill',c);
+});
+
+const gBands  = svg.append('g');
+const gLinks  = svg.append('g');
+const gNodes  = svg.append('g');
+
+/* --- helpers de texto -------------------------------------------------- */
+function wrap(sel, width, lh){
+  sel.each(function(){
+    const t = d3.select(this), words = t.text().split(/\s+/).reverse();
+    let line=[], ln=0, w, tsp = t.text(null).append('tspan').attr('x',t.attr('x')).attr('dy',0);
+    while((w = words.pop())){
+      line.push(w); tsp.text(line.join(' '));
+      if(tsp.node().getComputedTextLength() > width && line.length>1){
+        line.pop(); tsp.text(line.join(' '));
+        line=[w]; tsp = t.append('tspan').attr('x',t.attr('x')).attr('dy',++ln?lh:lh).text(w);
+      }
+    }
+  });
+}
+function band(x,y,w,h,label,color,sub){
+  const g = gBands.append('g');
+  g.append('rect').attr('x',x).attr('y',y).attr('width',w).attr('height',h)
+    .attr('rx',11).attr('fill','none').attr('stroke',color)
+    .attr('stroke-opacity',.34).attr('stroke-dasharray','5 4');
+  g.append('text').attr('x',x+13).attr('y',y+19).attr('fill',color)
+    .attr('font-size',11.5).attr('font-weight',650)
+    .attr('letter-spacing','.8px').text(label);
+  if(sub) g.append('text').attr('x',x+13).attr('y',y+34).attr('fill','#6b7a8c')
+    .attr('font-size',10.5).attr('font-family','ui-monospace,Menlo,monospace').text(sub);
+  return g;
+}
+
+/* --- bandas (namespaces / zonas) --------------------------------------- */
+const PIPE_W = colX(8)+COL_W - PIPE_X + 26;
+band(PIPE_X-26, PIPE_Y-124, PIPE_W, BOX_H+218,
+  'NAMESPACE  devsecops-duel   ·   el pipeline y el agente azul', '#8b98a5',
+  'carga no confiable · sin credenciales de clúster');
+band(PIPE_X-26, 596, PIPE_W, 150,
+  'NAMESPACE  devsecops-agent   ·   los agentes con credenciales', 'var(--purple)',
+  'LLM + MCP + lectura de PipelineRuns + clave de Git');
+band(PIPE_X-26, 60, PIPE_W, 150,
+  'PLATAFORMA  ·  servicios del clúster', 'var(--teal)',
+  'ninguno sale a internet');
+band(PIPE_X-26, 800, PIPE_W, 186,
+  'GOBIERNO  ·  qué es declarativo y quién lo aplica', 'var(--green)',
+  'repo homelab-gitops → Argo CD → clúster');
+
+/* --- plataforma (fila superior) ---------------------------------------- */
+const platX = [PIPE_X+6, PIPE_X+282, PIPE_X+558, PIPE_X+858, PIPE_X+1140];
+const platW = [250, 250, 274, 274, 300];
+PLATFORM.filter(p=>p.id!=='argocd').forEach((p,i)=>{
+  const g = gNodes.append('g').attr('class','node plat lit')
+    .attr('data-id',p.id).style('cursor','pointer');
+  g.append('rect').attr('x',platX[i]).attr('y',96).attr('width',platW[i]).attr('height',62)
+    .attr('rx',9).attr('fill','#10212a').attr('stroke',p.color).attr('stroke-opacity',.6);
+  g.append('text').attr('x',platX[i]+13).attr('y',120).attr('fill','#dfe9f2')
+    .attr('font-size',13).attr('font-weight',600).text(p.n);
+  g.append('text').attr('x',platX[i]+13).attr('y',139).attr('fill','#6f8696')
+    .attr('font-size',10.5).attr('font-family','ui-monospace,Menlo,monospace').text(p.sub);
+  g.on('click',()=>showPlatform(p));
+});
+
+/* --- Argo CD (fila inferior) ------------------------------------------- */
+{
+  const p = PLATFORM.find(x=>x.id==='argocd');
+  const g = gNodes.append('g').attr('class','node plat lit')
+    .attr('data-id','argocd').style('cursor','pointer');
+  g.append('rect').attr('x',PIPE_X+6).attr('y',836).attr('width',364).attr('height',66)
+    .attr('rx',9).attr('fill','#0f1d13').attr('stroke','var(--green)').attr('stroke-opacity',.65);
+  g.append('text').attr('x',PIPE_X+19).attr('y',861).attr('fill','#dfe9f2')
+    .attr('font-size',13.5).attr('font-weight',650).text('Argo CD  ·  5 Applications');
+  g.append('text').attr('x',PIPE_X+19).attr('y',880).attr('fill','#6f8f78')
+    .attr('font-size',10.5).attr('font-family','ui-monospace,Menlo,monospace')
+    .text('repo homelab-gitops  →  reconcilia el clúster');
+  g.on('click',()=>showPlatform(p));
+
+  // lista de Applications
+  const apps = ['…-pipeline','…-pipeline-runs','…-admission-policies','…-backstage-agent','…-sample-app'];
+  apps.forEach((a,i)=>{
+    const x = PIPE_X+400 + (i%3)*296, y = 840 + Math.floor(i/3)*34;
+    const g2 = gNodes.append('g').attr('class','node lit').attr('data-id','argocd');
+    g2.append('rect').attr('x',x).attr('y',y).attr('width',280).attr('height',26)
+      .attr('rx',6).attr('fill','#0d1710').attr('stroke','#255233');
+    g2.append('text').attr('x',x+10).attr('y',y+17.5).attr('fill','#9fc9ab')
+      .attr('font-size',11).attr('font-family','ui-monospace,Menlo,monospace').text(a);
+  });
+  gNodes.append('text').attr('x',PIPE_X+6).attr('y',934).attr('fill','#5c6773')
+    .attr('font-size',11.5)
+    .text('El único camino de despliegue válido: un humano aprueba en Git y Argo CD sincroniza. El agente no puede hacerse pasar por Argo CD.');
+}
+
+/* --- etapas del pipeline ----------------------------------------------- */
+const KIND_FILL = { scan:'#1c2a38', build:'#24252f', supply:'#1d2a2f',
+  gate:'#2e1f24', deploy:'#2c2418', agentstage:'#241f33' };
+const KIND_STROKE = { scan:'#3d5872', build:'#4a4d60', supply:'#2f5b60',
+  gate:'#7a3b44', deploy:'#6b5626', agentstage:'#54407a' };
+
+STAGES.forEach(s=>{
+  const g = gNodes.append('g').attr('class','node stage lit')
+    .attr('data-id',s.id).attr('data-stage',s.id);
+  g.append('rect').attr('class','box')
+    .attr('x',colX(s.col)).attr('y',PIPE_Y).attr('width',COL_W).attr('height',BOX_H)
+    .attr('rx',9).attr('fill',KIND_FILL[s.kind]).attr('stroke',KIND_STROKE[s.kind])
+    .attr('stroke-width',1.4);
+  g.append('text').attr('x',colX(s.col)+12).attr('y',PIPE_Y+22)
+    .attr('fill','#e6edf3').attr('font-size',12.5).attr('font-weight',650).text(s.n);
+  g.append('text').attr('x',colX(s.col)+12).attr('y',PIPE_Y+39)
+    .attr('fill','#8b98a5').attr('font-size',10.5).text(s.sub);
+  g.append('text').attr('x',colX(s.col)+12).attr('y',PIPE_Y+60)
+    .attr('fill', s.verdict==='rechazado' ? '#d29922'
+         : s.verdict==='el corazón' ? '#f85149' : '#6b7a8c')
+    .attr('font-size',10).attr('font-weight',600)
+    .attr('letter-spacing','.4px').text(s.verdict.toUpperCase());
+  g.on('click',()=>{ selectStage(s.id); });
+});
+
+// flechas runAfter entre etapas consecutivas
+for(let i=0;i<STAGES.length-1;i++){
+  const a=STAGES[i], b=STAGES[i+1];
+  gLinks.append('path').attr('class','link lit')
+    .attr('data-from',a.id).attr('data-to',b.id)
+    .attr('d',`M${colX(a.col)+COL_W},${PIPE_Y+BOX_H/2}H${colX(b.col)}`)
+    .attr('stroke','#54657a').attr('stroke-width',1.5).attr('fill','none')
+    .attr('marker-end','url(#a)');
+}
+// el when de deploy-gitops
+gLinks.append('text').attr('class','lit')
+  .attr('x',colCX(8)).attr('y',PIPE_Y-10).attr('text-anchor','middle')
+  .attr('fill','#d29922').attr('font-size',10)
+  .attr('font-family','ui-monospace,Menlo,monospace')
+  .text('when: decision==APPROVE && verify==OK');
+
+/* --- agentes ----------------------------------------------------------- */
+// rojo y azul dentro del namespace del duelo, bajo gate-blue
+function agentBox(key, x, y, w, h, fill, stroke){
+  const a = AGENTS[key];
+  const g = gNodes.append('g').attr('class','node agent lit')
+    .attr('data-id',key).style('cursor','pointer');
+  g.append('rect').attr('x',x).attr('y',y).attr('width',w).attr('height',h)
+    .attr('rx',9).attr('fill',fill).attr('stroke',stroke).attr('stroke-width',1.5);
+  g.append('text').attr('x',x+12).attr('y',y+21).attr('fill','#e6edf3')
+    .attr('font-size',12.5).attr('font-weight',650).text(a.n.length>34? a.n.slice(0,33)+'…' : a.n);
+  g.append('text').attr('x',x+12).attr('y',y+38).attr('fill','#8b98a5')
+    .attr('font-size',10.5).text(`ns ${a.ns}`);
+  const r = g.append('text').attr('x',x+12).attr('y',y+56).attr('fill','#aab8c6')
+    .attr('font-size',11);
+  r.text(a.role); wrap(r, w-24, 13);
+  g.on('click',()=>showAgent(key));
+  return g;
+}
+
+// agente rojo (step, dentro del pipeline) — justo encima de gate-blue
+agentBox('red', colX(6)-10, PIPE_Y-92, 242, 72, '#2a1518', '#8c3a42');
+// agente azul (servicio) — debajo de gate-blue
+agentBox('blue', colX(6)-10, PIPE_Y+BOX_H+18, 230, 72, '#15202e', '#2f5b85');
+
+// agente de remediación — debajo de la etapa remediation, en su namespace
+agentBox('remediation', colX(4)-38, 636, 266, 86, '#1d1630', '#5b4387');
+// agente de aprobación — a la derecha, sin etapa (observa todas)
+agentBox('approval', colX(7)-30, 636, 290, 86, '#1d1630', '#5b4387');
+
+/* --- enlaces agente ↔ etapa / plataforma -------------------------------- */
+function link(d, color, marker, dash, cls){
+  return gLinks.append('path').attr('class','link lit '+(cls||''))
+    .attr('d',d).attr('stroke',color).attr('stroke-width',1.5).attr('fill','none')
+    .attr('stroke-dasharray',dash||null).attr('marker-end',`url(#${marker})`);
+}
+// rojo → gate-blue (es un step de esa task)
+link(`M${colX(6)+80},${PIPE_Y-20}V${PIPE_Y}`, '#f85149','ared');
+// gate-blue → azul (A2A)
+link(`M${colX(6)+80},${PIPE_Y+BOX_H}V${PIPE_Y+BOX_H+18}`, '#58a6ff','ablue');
+gLinks.append('text').attr('class','lit').attr('x',colX(6)+88).attr('y',PIPE_Y+BOX_H+13)
+  .attr('fill','#58a6ff').attr('font-size',10)
+  .attr('font-family','ui-monospace,Menlo,monospace').text('A2A');
+
+// remediation (etapa) → agente de remediación
+link(`M${colCX(4)},${PIPE_Y+BOX_H}V${610}H${colX(4)+95}V636`, '#bc8cff','apurple','4 3');
+gLinks.append('text').attr('class','lit').attr('x',colCX(4)+8).attr('y',PIPE_Y+BOX_H+30)
+  .attr('fill','#bc8cff').attr('font-size',10)
+  .attr('font-family','ui-monospace,Menlo,monospace').text('A2A · solo «advise» (8081)');
+
+// agente de aprobación lee PipelineRuns (de toda la banda del pipeline)
+link(`M${colX(8)+COL_W-30},${PIPE_Y+BOX_H}V600H${colX(7)+115}V636`, '#bc8cff','apurple','4 3');
+gLinks.append('text').attr('class','lit').attr('x',colX(8)-6).attr('y',592)
+  .attr('fill','#bc8cff').attr('font-size',10)
+  .attr('font-family','ui-monospace,Menlo,monospace').text('lee PipelineRuns (RBAC solo lectura)');
+
+// agentes → vLLM y MCP (hacia la banda de plataforma)
+link(`M${colX(4)+95},636V560H${platX[1]+125}V158`, '#39c5bb','ateal','3 3');
+link(`M${colX(7)+115},636V572H${platX[2]+137}V158`, '#39c5bb','ateal','3 3');
+// azul → vLLM (modo llm)
+link(`M${colX(6)+200},${PIPE_Y+BOX_H+18}V${PIPE_Y+BOX_H+4}H${colX(6)+248}V200H${platX[1]+190}V158`,
+  '#39c5bb','ateal','3 3');
+
+// build → Zot ; trivy ← Zot ; sign/verify ↔ Zot
+link(`M${colCX(1)},${PIPE_Y}V236H${platX[0]+125}V158`, '#39c5bb','ateal','3 3');
+link(`M${colCX(5)},${PIPE_Y}V214H${platX[0]+180}V158`, '#39c5bb','ateal','3 3');
+
+// deploy-gitops → Kyverno (rechazo)
+link(`M${colCX(8)},${PIPE_Y}V250H${platX[3]+137}V158`, '#d29922','aamber');
+gLinks.append('text').attr('class','lit').attr('x',colCX(8)+10).attr('y',244)
+  .attr('fill','#d29922').attr('font-size',10.5).attr('font-weight',600)
+  .text('RECHAZADO ×2');
+
+// Argo CD → pipeline / agentes / policies (gobierna)
+link(`M${PIPE_X+188},836V790H${colCX(2)}V${PIPE_Y+BOX_H}`, '#3fb950','agreen','4 3');
+link(`M${PIPE_X+188},836V790H${colX(4)+95}V722`, '#3fb950','agreen','4 3');
+
+/* ===========================================================================
+   PANEL
+   =========================================================================== */
+const panel = d3.select('#panel');
+const esc = s => String(s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function intro(){
+  panel.html(`
+    <h2>Cómo leer este mapa</h2>
+    <p>De izquierda a derecha, las <b>9 etapas</b> del pipeline Tekton en el orden real
+    en que corren (<code>runAfter</code>).</p>
+    <h3>Las cuatro bandas</h3>
+    <ul>
+      <li><b>Plataforma</b> (arriba) — registry, el LLM y la puerta MCP. Nada sale a internet.</li>
+      <li><b>devsecops-duel</b> — el pipeline y el agente azul. Aquí corre carga <b>no confiable</b>: sin credenciales de clúster.</li>
+      <li><b>devsecops-agent</b> — los agentes que <b>sí</b> tienen credenciales. Namespace aparte a propósito.</li>
+      <li><b>Gobierno</b> (abajo) — qué es declarativo y quién lo aplica.</li>
+    </ul>
+    <h3>Dónde actúa cada agente</h3>
+    <p>El <b style="color:var(--red)">rojo</b> es un <i>step</i> dentro de <code>gate-blue</code>.
+    El <b style="color:var(--blue)">azul</b> es un servicio aparte: el ataque tiene que cruzar
+    una frontera de red real. Los dos <b style="color:var(--purple)">agentes con LLM+MCP</b>
+    viven en el otro namespace y <b>solo informan</b>.</p>
+    <div class="note">La separación no es estética. El step del rojo no tiene token de API
+    ni salida a internet, y por NetworkPolicy solo puede hablar con el azul.</div>
+    <h3>El punto de la charla</h3>
+    <div class="note crit">En el acto 3 el azul <b>aprueba</b>, la firma <b>verifica</b> y el
+    agente <b>tiene credencial</b>. Y el despliegue no entra: lo frena la <b>admisión</b>,
+    no el modelo.</div>
+    <p class="hint">Clic en cualquier caja para ver sus steps, sus Results y por qué está
+    diseñada así. Usa «Camino del ataque» para seguir el acto 3.</p>
+  `);
+}
+
+function selectStage(id){
+  const s = STAGES.find(x=>x.id===id);
+  d3.selectAll('.stage').classed('sel',false);
+  d3.select(`[data-stage="${id}"]`).classed('sel',true);
+  panel.html(`
+    <h2>${esc(s.n.replace(/^\d+\w*\s·\s/,''))}</h2>
+    <div>
+      <span class="tag">etapa ${esc(s.n.split(' ')[0])} de 9</span>
+      <span class="tag">${esc(s.verdict)}</span>
+      ${s.agent?`<span class="tag" style="border-color:var(--purple);color:#c7a8f5">agente aquí</span>`:''}
+    </div>
+    <h3>Qué hace</h3><p>${esc(s.what)}</p>
+    <h3>Steps (en orden)</h3>
+    <ul>${s.steps.map(x=>{
+      const i = x.indexOf(' — ');
+      return i>0 ? `<li><code>${esc(x.slice(0,i))}</code> ${esc(x.slice(i+3))}</li>`
+                 : `<li>${esc(x)}</li>`;
+    }).join('')}</ul>
+    <h3>Results que publica</h3>
+    <ul>${s.results.map(r=>`<li><code>${esc(r)}</code></li>`).join('')}</ul>
+    <h3>Por qué está así</h3>
+    <div class="note ${s.id==='verify'||s.id==='gate-blue'?'crit':s.id==='deploy-gitops'?'ok':''}">${esc(s.why)}</div>
+    ${s.agent?`<p class="hint">Un agente actúa en esta etapa — clic en su caja para el detalle.</p>`:''}
+  `);
+  focusStage(s);
+}
+
+function showAgent(key){
+  const a = AGENTS[key], d = a.detail;
+  d3.selectAll('.stage').classed('sel',false);
+  panel.html(`
+    <h2 style="color:${a.color}">${esc(a.n)}</h2>
+    <div>
+      <span class="tag">ns ${esc(a.ns)}</span>
+      ${a.llm?'<span class="tag" style="border-color:var(--teal);color:#7fd8d1">usa el LLM</span>':''}
+      ${a.mcp?'<span class="tag" style="border-color:var(--teal);color:#7fd8d1">usa MCP</span>':''}
+      ${a.under?`<span class="tag">actúa en ${esc(a.under)}</span>`:'<span class="tag">observa todas las corridas</span>'}
+    </div>
+    <h3>Su papel</h3><p>${esc(a.role)}</p>
+    <h3>Cómo funciona</h3><p>${esc(d.what)}</p>
+    <h3>Claves</h3>
+    <ul>${d.bullets.map(b=>`<li>${esc(b)}</li>`).join('')}</ul>
+    <h3>La frontera</h3>
+    <div class="note ${key==='blue'?'crit':''}">${esc(d.guard)}</div>
+  `);
+  focusAgent(key);
+}
+
+function showPlatform(p){
+  d3.selectAll('.stage').classed('sel',false);
+  panel.html(`
+    <h2 style="color:${p.color}">${esc(p.n)}</h2>
+    <div><span class="tag mono">${esc(p.sub)}</span></div>
+    <h3>Qué es</h3><p>${esc(p.what)}</p>
+    <h3>Claves</h3>
+    <ul>${p.bullets.map(b=>`<li>${esc(b)}</li>`).join('')}</ul>
+    ${p.note?`<div class="note">${esc(p.note)}</div>`:''}
+  `);
+  showAll();
+}
+
+/* --- foco / atenuado --------------------------------------------------- */
+function showAll(){
+  d3.selectAll('.node,.link').classed('dimmed',false).classed('lit',true);
+}
+function dimAllBut(ids){
+  const keep = new Set(ids);
+  d3.selectAll('.node').each(function(){
+    const on = keep.has(d3.select(this).attr('data-id'));
+    d3.select(this).classed('dimmed',!on).classed('lit',on);
+  });
+  d3.selectAll('.link').classed('dimmed',true).classed('lit',false);
+}
+function focusStage(s){
+  const ids=[s.id]; if(s.agent) ids.push(s.agent);
+  if(s.id==='gate-blue') ids.push('red','blue');
+  if(s.id==='deploy-gitops') ids.push('kyverno','argocd');
+  if(['build','sign','verify','trivy-scan'].includes(s.id)) ids.push('zot');
+  dimAllBut(ids);
+}
+function focusAgent(key){
+  const a=AGENTS[key], ids=[key];
+  if(a.under) ids.push(a.under);
+  if(a.llm) ids.push('vllm');
+  if(a.mcp) ids.push('mcp');
+  if(key==='approval') ids.push(...STAGES.map(s=>s.id));
+  dimAllBut(ids);
+}
+
+/* --- controles --------------------------------------------------------- */
+d3.selectAll('[data-layer]').on('click', function(){
+  d3.selectAll('[data-layer]').classed('on',false);
+  d3.select(this).classed('on',true);
+  const L = d3.select(this).attr('data-layer');
+  if(L==='all'){ showAll(); intro(); return; }
+  if(L==='pipeline') dimAllBut([...STAGES.map(s=>s.id),'zot','red','blue']);
+  if(L==='agents')   dimAllBut(['red','blue','remediation','approval','vllm','mcp','gate-blue','remediation']);
+  if(L==='gitops')   dimAllBut(['argocd','kyverno','deploy-gitops']);
+  const txt = {
+    pipeline:['Solo el pipeline','Las 9 etapas en el orden real de ejecución. La cadena de supply chain (sast → build → sbom → trivy → sign → verify) es real contra el registry interno: se empuja, se firma, se escanea y se verifica por digest.'],
+    agents:['Solo los agentes','Cuatro agentes y tres roles distintos: el rojo ataca desde dentro del pipeline, el azul decide el veredicto, y los dos del otro namespace analizan e informan a la persona. Solo estos dos últimos tienen credenciales.'],
+    gitops:['Solo el gobierno','Argo CD aplica lo declarativo y Kyverno decide qué entra. El agente puede falsificar una anotación de aprobación, pero no puede hacerse pasar por Argo CD — y ahí se cae el ataque.']
+  }[L];
+  panel.html(`<h2>${txt[0]}</h2><p>${txt[1]}</p>
+    <p class="hint">Clic en cualquier caja encendida para su detalle, o «Ver todo» para el panorama.</p>`);
+});
+
+d3.select('#act3').on('click',()=>{
+  d3.selectAll('[data-layer]').classed('on',false);
+  dimAllBut(['red','blue','gate-blue','sign','verify','deploy-gitops','kyverno','argocd','zot']);
+  panel.html(`
+    <h2>Camino del ataque — acto 3</h2>
+    <p>Sigue las cajas encendidas, en este orden:</p>
+    <h3>1 · El rojo abre el PR</h3>
+    <p>El payload toca <b>config</b> (<code>config/deploy-notes.md</code>), <b>no la imagen</b>.
+    Ese detalle es todo el ataque.</p>
+    <h3>2 · sign + verify: la firma es válida</h3>
+    <div class="note">Como la imagen no se tocó, cosign firma y verifica <b>correctamente</b>.
+    La cadena de supply chain está intacta y no ve nada. Necesaria, no suficiente.</div>
+    <h3>3 · gate-blue: el azul aprueba</h3>
+    <p>En modo <code>rules</code> el azul obedece la nota del PR y emite <code>APPROVE</code>.</p>
+    <div class="note crit">Hallazgo honesto: en modo <code>llm</code> con Qwen3-8B el azul
+    <b>bloqueó 5 de 5</b> — ve el <code>curl | sh</code>. El APPROVE solo ocurre donde obedecer
+    la nota está programado a propósito.</div>
+    <h3>4 · deploy-gitops: y no entra</h3>
+    <p>El agente despliega con su credencial real. Dos intentos:</p>
+    <ul>
+      <li>el manifiesto tal cual → <b>falta la aprobación humana</b></li>
+      <li>el agente se pone él mismo la anotación → <b>no viene de GitOps</b></li>
+    </ul>
+    <div class="note ok">Lo que lo frena no es el modelo: es la <b>admisión</b>.
+    El agente puede falsificar una anotación, pero no puede hacerse pasar por Argo CD.</div>
+  `);
+});
+d3.select('#reset').on('click',()=>{
+  d3.selectAll('[data-layer]').classed('on',false);
+  d3.select('[data-layer="all"]').classed('on',true);
+  d3.selectAll('.stage').classed('sel',false); showAll(); intro();
+});
+
+intro();
+</script>
+</body>
+</html>
