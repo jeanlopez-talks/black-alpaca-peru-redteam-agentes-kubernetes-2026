@@ -85,10 +85,22 @@
     padding:1px 5px;font-size:11.5px;
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#a9b6c3;
     word-break:break-all}
-  .note{border-left:2px solid var(--amber);padding:8px 11px;background:#1d1a0e;
-    border-radius:0 6px 6px 0;font-size:12.5px;line-height:1.55;color:#e3d8b5;margin:10px 0}
-  .note.crit{border-color:var(--red);background:#1f1113;color:#f0c0bd}
-  .note.ok{border-color:var(--green);background:#0f1c12;color:#b7e3bd}
+  .note{padding:9px 12px;background:#1d1a0e;
+    border-radius:6px;font-size:12.5px;line-height:1.55;color:#e3d8b5;margin:10px 0}
+  .note.crit{background:#1f1113;color:#f0c0bd}
+  .note.ok{background:#0f1c12;color:#b7e3bd}
+  /* La frase de entrada: lo que lee primero quien no es técnico. */
+  aside .lead{font-size:15px;line-height:1.5;color:#e8eff6;margin:12px 0 4px;font-weight:450}
+  /* El detalle técnico va plegado: disponible, pero sin estorbar. */
+  aside details{margin:14px 0 4px;border-top:1px solid var(--line);padding-top:10px}
+  aside details summary{font-size:11px;text-transform:uppercase;letter-spacing:.8px;
+    color:var(--faint);font-weight:650;cursor:pointer;list-style:none;
+    display:flex;align-items:center;gap:6px}
+  aside details summary::-webkit-details-marker{display:none}
+  aside details summary::before{content:'▸';font-size:10px;transition:transform .15s}
+  aside details[open] summary::before{transform:rotate(90deg)}
+  aside details summary:hover{color:var(--dim)}
+  aside details h3:first-of-type{margin-top:12px}
   .hint{font-size:12px;color:var(--faint);line-height:1.6}
   .legend{display:flex;gap:14px;flex-wrap:wrap;padding:9px 26px 11px;font-size:11.5px;
     color:var(--dim);border-bottom:1px solid var(--line)}
@@ -222,6 +234,8 @@ const d3 = (() => {
 const STAGES = [
   {
     id: "git-clone",
+    plain: "Se trae el código del PR a la máquina donde corre el pipeline.",
+    so: "Todo lo que viene después analiza ESTE código. Si el origen no es fiable, nada de lo que sigue lo es.",
     col: 0,
     n: "0 · git-clone",
     sub: "clona el PR desde GitHub",
@@ -234,12 +248,14 @@ const STAGES = [
       "(workspace compartido: el resto de etapas leen de aquí)",
     ],
     results: ["commit = sha del PR", "url = repo clonado"],
-    why: "Hoy la fuente llega por ConfigMap, lo cual es un atajo de laboratorio. Un pipeline DevSecOps de verdad arranca clonando: así el commit que se escanea, se construye y se firma es trazable hasta su revisión en Git. Sin esto, la cadena de supply chain no tiene origen verificable.",
+    why: "Todo lo que el pipeline escanea, construye y firma sale de aquí. Clonar da el origen verificable de la cadena: el commit es trazable hasta su revisión en Git.",
     agent: null,
   },
 
   {
     id: "test",
+    plain: "Ejecuta las pruebas del propio proyecto y revisa el estilo del código.",
+    so: "Si el código no pasa sus propias pruebas, no merece la pena seguir gastando tiempo en él.",
     col: 1,
     n: "1 · test",
     sub: "unit tests + lint",
@@ -258,6 +274,8 @@ const STAGES = [
 
   {
     id: "sast",
+    plain: "Lee el código buscando fallos de seguridad y contraseñas olvidadas dentro.",
+    so: "Encuentra problemas ANTES de construir nada. Es lo más barato: corregir aquí cuesta minutos.",
     col: 2,
     n: "2 · sast",
     sub: "semgrep + gitleaks",
@@ -277,6 +295,8 @@ const STAGES = [
 
   {
     id: "build",
+    plain: "Convierte el código en una imagen de contenedor y la guarda en el registro interno.",
+    so: "A partir de aquí ya existe «el producto»: lo que de verdad acabaría ejecutándose.",
     col: 3,
     n: "3 · build",
     sub: "kaniko → registry Zot",
@@ -295,6 +315,8 @@ const STAGES = [
 
   {
     id: "sbom",
+    plain: "Hace la lista completa de ingredientes de la imagen: cada librería y su versión.",
+    so: "Es la etiqueta nutricional del contenedor. Sin ella no sabes qué estás desplegando.",
     col: 4,
     n: "4 · sbom",
     sub: "Syft (CycloneDX + SPDX)",
@@ -313,6 +335,8 @@ const STAGES = [
 
   {
     id: "trivy-scan",
+    plain: "Compara esos ingredientes con las bases de vulnerabilidades conocidas.",
+    so: "Te dice qué partes de tu imagen tienen fallos públicos que alguien podría aprovechar.",
     col: 5,
     n: "5 · trivy-scan",
     sub: "Trivy sobre la imagen",
@@ -332,6 +356,8 @@ const STAGES = [
 
   {
     id: "remediation",
+    plain: "Un agente con IA lee esas vulnerabilidades y propone cómo arreglarlas.",
+    so: "No arregla nada solo: propone, y una persona decide. Bajó de 37 a 13 vulnerabilidades graves.",
     col: 6,
     n: "5b · remediation",
     sub: "agente de remediación",
@@ -349,6 +375,8 @@ const STAGES = [
 
   {
     id: "sign",
+    plain: "Pone un sello criptográfico en la imagen, como un lacre.",
+    so: "Luego cualquiera puede comprobar que la imagen es la tuya y que nadie la cambió por el camino.",
     col: 7,
     n: "6 · sign",
     sub: "cosign firma por digest",
@@ -368,6 +396,8 @@ const STAGES = [
 
   {
     id: "attest",
+    plain: "Guarda un certificado de origen: de qué commit salió y qué pipeline la construyó.",
+    so: "La firma dice «es mía». Esto dice «y la hice así, desde aquí». Es la trazabilidad completa.",
     col: 8,
     n: "7 · attest",
     sub: "procedencia SLSA",
@@ -386,6 +416,8 @@ const STAGES = [
 
   {
     id: "gate-blue",
+    plain: "El agente atacante manda el PR al agente revisor, que decide si pasa o no.",
+    so: "Aquí es donde ocurre el ataque: convencer al revisor de que apruebe algo que no debería.",
     col: 9,
     n: "8 · gate-blue",
     sub: "rojo → azul (A2A)",
@@ -404,6 +436,8 @@ const STAGES = [
 
   {
     id: "verify",
+    plain: "Comprueba que el lacre de la imagen sigue intacto.",
+    so: "Sale OK… y aun así el ataque sigue vivo, porque el PR no tocó la imagen sino la configuración.",
     col: 10,
     n: "9 · verify",
     sub: "cosign verifica",
@@ -423,6 +457,8 @@ const STAGES = [
 
   {
     id: "deploy-gitops",
+    plain: "El agente intenta desplegar la aplicación en el clúster con su propia credencial.",
+    so: "Y no lo consigue. Kyverno lo rechaza dos veces: aquí es donde el ataque muere.",
     col: 11,
     n: "10 · deploy-gitops",
     sub: "el agente despliega",
@@ -761,7 +797,7 @@ gLinks.append('text').attr('class','lit')
   .attr('x',colX(0)).attr('y',PIPE_Y-44)
   .attr('fill','#7d8da0').attr('font-size',11).attr('font-weight',650)
   .attr('letter-spacing','1.4px')
-  .text(`${STAGES.length} ETAPAS, DE IZQUIERDA A DERECHA`);
+  .text('EL PIPELINE, PASO A PASO  ·  DE IZQUIERDA A DERECHA');
 
 /* --- agentes ----------------------------------------------------------- */
 // rojo y azul dentro del namespace del duelo, bajo gate-blue
@@ -885,7 +921,7 @@ const esc = s => String(s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&g
 function intro(){
   panel.html(`
     <h2>Cómo leer esto</h2>
-    <p>Un PR entra por la izquierda y recorre <b>${STAGES.length} etapas</b>.</p>
+    <p>Un PR entra por la izquierda y recorre el pipeline <b>paso a paso</b>, hasta intentar desplegarse.</p>
     <h3>Las bandas</h3>
     <ul>
       <li><b>Plataforma</b> — registry, LLM, MCP</li>
@@ -925,25 +961,39 @@ function selectStage(id){
   const s = STAGES.find(x=>x.id===id);
   d3.selectAll('.stage').classed('sel',false);
   d3.select(`[data-stage="${id}"]`).classed('sel',true);
+  // El panel va de lo llano a lo técnico: primero QUÉ HACE en lenguaje normal y
+  // POR QUÉ IMPORTA, y el detalle de Tekton (steps/results) plegado al final,
+  // para que alguien no técnico entienda la etapa sin tropezar con la jerga.
+  const num = s.n.split(' ')[0];            // 0,1,…,10 o «5b»
+  const last = STAGES[STAGES.length-1].n.split(' ')[0];
   panel.html(`
-    <h2>${esc(s.n.replace(/^\d+\w*\s·\s/,''))}</h2>
+    <h2>${esc(s.n.replace(/^[\w\d]+\s·\s/,''))}</h2>
     <div>
-      <span class="tag">etapa ${esc(s.n.split(' ')[0])} de 9</span>
-      <span class="tag">${esc(s.verdict)}</span>
-      ${s.agent?`<span class="tag" style="border-color:var(--purple);color:#c7a8f5">agente aquí</span>`:''}
+      <span class="tag">${num==='5b' ? 'extra · tras el paso 5' : `paso ${num} de ${last}`}</span>
+      ${s.status==='todo'?`<span class="tag" style="border-color:#5a6472">por construir</span>`:''}
+      ${s.agent?`<span class="tag" style="border-color:var(--purple);color:#c7a8f5">hay un agente</span>`:''}
     </div>
-    <h3>Qué hace</h3><p>${esc(s.what)}</p>
-    <h3>Steps (en orden)</h3>
-    <ul>${s.steps.map(x=>{
-      const i = x.indexOf(' — ');
-      return i>0 ? `<li><code>${esc(x.slice(0,i))}</code> ${esc(x.slice(i+3))}</li>`
-                 : `<li>${esc(x)}</li>`;
-    }).join('')}</ul>
-    <h3>Results que publica</h3>
-    <ul>${s.results.map(r=>`<li><code>${esc(r)}</code></li>`).join('')}</ul>
-    <h3>Por qué está así</h3>
-    <div class="note ${s.id==='verify'||s.id==='gate-blue'?'crit':s.id==='deploy-gitops'?'ok':''}">${esc(s.why)}</div>
-    ${s.agent?`<p class="hint">Un agente actúa en esta etapa — clic en su caja para el detalle.</p>`:''}
+
+    <p class="lead">${esc(s.plain || s.what)}</p>
+
+    <h3>Y esto para qué</h3>
+    <div class="note ${s.id==='deploy-gitops'?'ok':(s.id==='verify'||s.id==='gate-blue')?'crit':''}">${esc(s.so || s.why)}</div>
+
+    <details>
+      <summary>Detalle técnico</summary>
+      <h3>Qué hace exactamente</h3><p>${esc(s.what)}</p>
+      <h3>Pasos internos</h3>
+      <ul>${s.steps.map(x=>{
+        const i = x.indexOf(' — ');
+        return i>0 ? `<li><code>${esc(x.slice(0,i))}</code> ${esc(x.slice(i+3))}</li>`
+                   : `<li>${esc(x)}</li>`;
+      }).join('')}</ul>
+      <h3>Qué deja para las siguientes etapas</h3>
+      <ul>${s.results.map(r=>`<li><code>${esc(r)}</code></li>`).join('')}</ul>
+      <h3>Por qué está diseñada así</h3>
+      <div class="note">${esc(s.why)}</div>
+    </details>
+    ${s.agent?`<p class="hint">Un agente actúa aquí — clic en su caja para verlo.</p>`:''}
   `);
   focusStage(s);
 }
@@ -952,19 +1002,24 @@ function showAgent(key){
   const a = AGENTS[key], d = a.detail;
   d3.selectAll('.stage').classed('sel',false);
   panel.html(`
-    <h2 style="color:${a.color}">${esc(a.n)}</h2>
+    <h2 style="color:${a.color}">${esc(a.short || a.n)}</h2>
     <div>
-      <span class="tag">ns ${esc(a.ns)}</span>
-      ${a.llm?'<span class="tag" style="border-color:var(--teal);color:#7fd8d1">usa el LLM</span>':''}
-      ${a.mcp?'<span class="tag" style="border-color:var(--teal);color:#7fd8d1">usa MCP</span>':''}
-      ${a.under?`<span class="tag">actúa en ${esc(a.under)}</span>`:'<span class="tag">observa todas las corridas</span>'}
+      ${a.under?`<span class="tag">actúa en ${esc(a.under)}</span>`:'<span class="tag">mira todas las corridas</span>'}
+      ${a.llm?'<span class="tag" style="border-color:var(--teal);color:#7fd8d1">usa IA</span>':''}
     </div>
-    <h3>Su papel</h3><p>${esc(a.role)}</p>
-    <h3>Cómo funciona</h3><p>${esc(d.what)}</p>
-    <h3>Claves</h3>
-    <ul>${d.bullets.map(b=>`<li>${esc(b)}</li>`).join('')}</ul>
-    <h3>La frontera</h3>
+
+    <p class="lead">${esc(a.role)}</p>
+
+    <h3>La frontera que importa</h3>
     <div class="note ${key==='blue'?'crit':''}">${esc(d.guard)}</div>
+
+    <details>
+      <summary>Detalle técnico</summary>
+      <h3>Cómo funciona</h3><p>${esc(d.what)}</p>
+      <h3>Claves</h3>
+      <ul>${d.bullets.map(b=>`<li>${esc(b)}</li>`).join('')}</ul>
+      <p class="hint">Corre en el namespace <code>${esc(a.ns)}</code>${a.mcp?' · lee el catálogo por MCP':''}.</p>
+    </details>
   `);
   focusAgent(key);
 }
